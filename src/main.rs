@@ -23,16 +23,17 @@ fn main() {
     tracing_subscriber::registry().with(fmt::layer()).init();
 
     //let path = Path::new("../datasets/data.exclude/llama-128-ip.hdf5");
-    let path = Path::new("../datasets/data.exclude/imagenet-align-640-normalized.hdf5");
+    //let path = Path::new("../datasets/data.exclude/imagenet-align-640-normalized.hdf5");
+    let path = Path::new("../datasets/data.exclude/imagenet-clip-512-normalized.hdf5");
     let outdir = "data.exclude";
 
     info!("Using dataset {path:?}");
     let dataset = BufferedDataset::<'_, Row<f32>, _>::open(path, "train").unwrap();
-    let num_corpus = 250_000.min(dataset.size());
-    let full_dataset = num_corpus == dataset.size();
+    let num_corpus = 10000_000.min(dataset.size());
+    //let full_dataset = num_corpus == dataset.size();
     info!("Corpus size: {} of {}", num_corpus, dataset.size());
     let corpus = dataset.into_iter().take(num_corpus).collect::<Vec<_>>();
-    let num_queries = corpus.len() / 10;
+    let num_queries = corpus.len() / 50;
     let queries = BufferedDataset::<'_, Row<f32>, _>::open(path, "learn")
         .unwrap()
         .into_iter()
@@ -42,7 +43,7 @@ fn main() {
     let options = ThesisIndexOptions {
         m: 100,
         l: 300,
-        p: 300,
+        p: 200,
     };
     let build_count = queries.len() / 2;
     info!("{options:?}");
@@ -62,54 +63,54 @@ fn main() {
     let graph = create_if_not_exists(graph_file, || {
         info!("Building index");
         ThesisIndexBuilder::new(options).build(
-            queries.iter().take(build_count).cloned().collect(),
+            &queries.iter().take(build_count).cloned().collect(),
             corpus.iter().cloned().collect(),
         )
     });
 
-    let ground_truth_keys = if full_dataset {
-        info!("Using ground truth nearest neighbors from dataset");
-        BufferedDataset::<'_, Row<usize>, _>::open(path, "learn_neighbors")
-            .unwrap()
-            .into_iter()
-            .skip(build_count)
-            .take(build_count)
-            .map(|r| r.data)
-            .collect::<Vec<_>>()
-    } else {
-        // Ground truth computation
-        let ground_truth_file_name = format!(
-            "{outdir}/ground_truth_{}-{}_{}.bin",
-            num_corpus,
-            build_count,
-            path.file_name().unwrap().to_str().unwrap(),
-        );
-        let ground_truth_file = Path::new(ground_truth_file_name.as_str());
-        let ground_truth = create_if_not_exists(ground_truth_file, || {
-            info!("Computing ground truth nearest neighbors...");
-            queries
-                .par_iter()
-                .skip(build_count)
-                .map(|q| {
-                    let mut closest = corpus
-                        .iter()
-                        .enumerate()
-                        .map(|(k, d)| Distance::new(d.distance(&q), k, d))
-                        .min_k(100);
-                    closest.sort();
-                    closest
-                        .iter()
-                        .map(|d| (d.key, d.distance))
-                        .collect::<Vec<_>>()
-                })
-                .collect::<Vec<_>>()
-        });
+    //let ground_truth_keys = if full_dataset {
+    //    info!("Using ground truth nearest neighbors from dataset");
+    //    BufferedDataset::<'_, Row<usize>, _>::open(path, "learn_neighbors")
+    //        .unwrap()
+    //        .into_iter()
+    //        .skip(build_count)
+    //        .take(build_count)
+    //        .map(|r| r.data)
+    //        .collect::<Vec<_>>()
+    //} else {
 
-        ground_truth
-            .iter()
-            .map(|v| v.iter().map(|(k, _)| *k).collect::<Vec<_>>())
+    // Ground truth computation
+    let ground_truth_file_name = format!(
+        "{outdir}/ground_truth_{}-{}_{}.bin",
+        num_corpus,
+        build_count,
+        path.file_name().unwrap().to_str().unwrap(),
+    );
+    let ground_truth_file = Path::new(ground_truth_file_name.as_str());
+    let ground_truth = create_if_not_exists(ground_truth_file, || {
+        info!("Computing ground truth nearest neighbors...");
+        queries
+            .par_iter()
+            .skip(build_count)
+            .map(|q| {
+                let mut closest = corpus
+                    .iter()
+                    .enumerate()
+                    .map(|(k, d)| Distance::new(d.distance(&q), k, d))
+                    .min_k(100);
+                closest.sort();
+                closest
+                    .iter()
+                    .map(|d| (d.key, d.distance))
+                    .collect::<Vec<_>>()
+            })
             .collect::<Vec<_>>()
-    };
+    });
+
+    let ground_truth_keys = ground_truth
+        .iter()
+        .map(|v| v.iter().map(|(k, _)| *k).collect::<Vec<_>>())
+        .collect::<Vec<_>>();
 
     let eval_queries = queries
         .iter()
