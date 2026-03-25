@@ -18,22 +18,26 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
 mod thesisindex;
+#[path = "filtered-diskann.rs"]
+pub mod filtered_diskann;
 
 fn main() {
     tracing_subscriber::registry().with(fmt::layer()).init();
 
     //let path = Path::new("../datasets/data.exclude/llama-128-ip.hdf5");
-    //let path = Path::new("../datasets/data.exclude/imagenet-align-640-normalized.hdf5");
-    let path = Path::new("../datasets/data.exclude/imagenet-clip-512-normalized.hdf5");
+    //let path = Path::new("../datasets/data.exclude/yi-128-ip.hdf5");
+    let path = Path::new("../datasets/data.exclude/imagenet-align-640-normalized.hdf5");
+    //let path = Path::new("../datasets/data.exclude/imagenet-clip-512-normalized.hdf5");
     let outdir = "data.exclude";
 
     info!("Using dataset {path:?}");
     let dataset = BufferedDataset::<'_, Row<f32>, _>::open(path, "train").unwrap();
-    let num_corpus = 10000_000.min(dataset.size());
+    //let num_corpus = 250_000.min(dataset.size());
+    let num_corpus = 10_000_000.min(dataset.size());
     //let full_dataset = num_corpus == dataset.size();
     info!("Corpus size: {} of {}", num_corpus, dataset.size());
     let corpus = dataset.into_iter().take(num_corpus).collect::<Vec<_>>();
-    let num_queries = corpus.len() / 50;
+    let num_queries = corpus.len() / 20;
     let queries = BufferedDataset::<'_, Row<f32>, _>::open(path, "learn")
         .unwrap()
         .into_iter()
@@ -41,9 +45,14 @@ fn main() {
         .collect::<Vec<_>>();
 
     let options = ThesisIndexOptions {
-        m: 100,
-        l: 300,
-        p: 200,
+        m: 64,
+        l: 64,
+        p: 64,
+        e: 5,
+        qk: 100,
+        qef: 200,
+        con: false,
+        vis: true,
     };
     let build_count = queries.len() / 2;
     info!("{options:?}");
@@ -53,19 +62,22 @@ fn main() {
     );
 
     let graph_file_name = format!(
-        "{outdir}/graph_{}-{}-{}_{num_corpus}-{build_count}_{}.bin",
-        options.m,
-        options.l,
-        options.p,
-        path.file_name().unwrap().to_str().unwrap()
+        "{outdir}/graph_{}_d={num_corpus}_q={build_count}_{:?}.bin",
+        path.file_name().unwrap().to_str().unwrap(),
+        options
     );
     let graph_file = Path::new(graph_file_name.as_str());
     let graph = create_if_not_exists(graph_file, || {
-        info!("Building index");
-        ThesisIndexBuilder::new(options).build(
+        info!("Building index...");
+        let start = std::time::Instant::now();
+        let index = ThesisIndexBuilder::new(options).build(
             &queries.iter().take(build_count).cloned().collect(),
             corpus.iter().cloned().collect(),
-        )
+        );
+        let elapsed = start.elapsed();
+        info!("Index build time: {:?}", elapsed);
+
+        index
     });
 
     //let ground_truth_keys = if full_dataset {
@@ -124,26 +136,26 @@ fn main() {
         .collect::<Vec<_>>();
 
     info!("Evaluating recall...");
-    let ef = 100;
-    let result: Vec<(f32, Duration)> = eval_ground_truth
-        .par_iter()
-        .map(|(knn, query)| {
-            let knn = knn.iter().copied().collect::<HashSet<_>>();
+    for ef in [10, 100] {
+        let result: Vec<(f32, Duration)> = eval_ground_truth
+            .par_iter()
+            .map(|(knn, query)| {
+                let knn = knn.iter().copied().collect::<HashSet<_>>();
 
-            let start = std::time::Instant::now();
-            let found = graph.search(query, graph.entry, ef);
-            let elapsed = start.elapsed();
-            let found = found.iter().map(|d| d.key).collect::<HashSet<_>>();
+                let start = std::time::Instant::now();
+                let found = graph.search(query, graph.entry, ef);
+                let elapsed = start.elapsed();
+                let found = found.iter().map(|d| d.key).collect::<HashSet<_>>();
 
-            (knn.intersection(&found).count() as f32 / ef as f32, elapsed)
-        })
-        .collect();
+                (knn.intersection(&found).count() as f32 / ef as f32, elapsed)
+            })
+            .collect();
 
-    let recall = result.iter().map(|(r, _)| r).sum::<f32>() / eval_ground_truth.len() as f32;
-    let spq = result.iter().map(|(_, e)| e).sum::<Duration>() / eval_ground_truth.len() as u32;
-    info!("Recall@{ef}: {:.4}", recall);
-    info!("SPQ: {:?}", spq);
-
+        let recall = result.iter().map(|(r, _)| r).sum::<f32>() / eval_ground_truth.len() as f32;
+        let spq = result.iter().map(|(_, e)| e).sum::<Duration>() / eval_ground_truth.len() as u32;
+        info!("Recall@{ef}: {:.4}", recall);
+        info!("SPQ@{ef}: {:?}", spq);
+    }
     let outfile = format!(
         "thesisindex-{}.txt",
         path.file_name().unwrap().to_str().unwrap()

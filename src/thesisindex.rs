@@ -1,10 +1,10 @@
-use hnsw_itu::{Distance, Index, IndexBuilder, Point};
+use hnsw_itu::{Distance, Graph, Index, IndexBuilder, IndexVis, NSW, Point};
 use hnsw_itu::{NSWBuilder, NSWOptions};
 use min_max_heap::MinMaxHeap;
 use rayon::prelude::*;
 use roargraph::AdjListGraph;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::sync::RwLock;
 use tracing::info;
 
@@ -78,6 +78,16 @@ pub struct ThesisIndexOptions {
     pub(crate) l: usize,
     /// KNN pruned set size
     pub(crate) p: usize,
+    /// Bipartite reverse edges
+    pub(crate) e: usize,
+    /// Query graph k
+    pub(crate) qk: usize,
+    /// Query graph ef
+    pub(crate) qef: usize,
+    /// Connectivity enhancement
+    pub(crate) con: bool,
+    /// Use visited nodes as candidates
+    pub(crate) vis: bool,
 }
 
 pub struct ThesisIndexBuilder {
@@ -94,86 +104,8 @@ impl ThesisIndexBuilder {
         queries: &Vec<P>,
         data: Vec<P>,
     ) -> ThesisIndex<P> {
-        let query_count = queries.len();
-
-        let mut unfinished_queries = BTreeSet::from_iter(0..query_count);
-        let mut unfinished_data = BTreeSet::from_iter(0..data.len());
-        let mut estimated_gt: Vec<Vec<Distance<P>>> = vec![vec![]; query_count];
-
-        let mut iteration_count = 0;
-        while !(unfinished_queries.is_empty() && unfinished_data.is_empty())
-            && iteration_count < 1
-            {
-            info!(
-                "Iteration {iteration_count} (unfinished queries: {})",
-                unfinished_queries.len()
-            );
-            iteration_count += 1;
-            let q = unfinished_queries
-                .iter()
-                .map(|&i| &queries[i])
-                .collect::<Vec<_>>();
-            let d = unfinished_data
-                .iter()
-                .map(|&i| &data[i])
-                .collect::<Vec<_>>();
-            let knns = self.estimate_gt(&q, &d);
-
-            if knns.iter().all(|k| k.is_empty()) {
-                info!("No k-nearest neighbors found for remaining queries");
-                break;
-            }
-
-            let mut knns_inverted = self.invert_knns(q.len(), &knns);
-
-            let finished_queries = estimated_gt
-                .iter_mut()
-                .enumerate()
-                .filter(|(i, _)| unfinished_queries.contains(i))
-                .enumerate()
-                .filter_map(|(i, (qi, knn))| {
-                    let knn_inverted = knns_inverted.get_mut(i).unwrap();
-                    knn.extend(knn_inverted.drain(..));
-                    if knn.len() > self.options.p {
-                        Some(qi)
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>();
-
-            info!("Pruning k-nearest query neighbors...");
-            estimated_gt
-                .par_iter_mut()
-                .enumerate()
-                .for_each(|(i, knn)| {
-                    if unfinished_queries.contains(&i) {
-                        *knn = self.select_neighbors_max(
-                            knn.drain(..).collect::<MinMaxHeap<_>>(),
-                            self.options.p,
-                        );
-                    }
-                });
-
-            for q in finished_queries {
-                unfinished_queries.remove(&q);
-            }
-
-            let mut data_counter: HashMap<usize, usize> =
-                HashMap::from_iter((0..data.len()).map(|i| (i, 0)));
-            for v in estimated_gt.iter() {
-                for d in v.iter() {
-                    let cnt = data_counter
-                        .entry(d.key)
-                        .and_modify(|c| *c += 1)
-                        .or_insert(1);
-                    //if *cnt > self.options.p {
-                    unfinished_data.remove(&d.key);
-                    //}
-                }
-            }
-            info!("Unfinished data: {}", unfinished_data.len());
-        }
+        let query_graph = self.build_nsw(&queries.iter().collect());
+        let estimated_gt = self.estimate_gt(&query_graph, &data.iter().collect());
 
         let mut counter = HashMap::new();
         for knn in estimated_gt.iter() {
@@ -207,28 +139,31 @@ impl ThesisIndexBuilder {
         // Construct bipartite graph
         info!("Constructing bipartite graph...");
         let mut bipartite_graph =
-            AdjListGraph::with_nodes_additional(data.iter().collect(), query_count);
+            AdjListGraph::with_nodes_additional(data.iter().collect(), queries.len());
         for (q, closest) in estimated_gt.iter().enumerate() {
             //if let Some(&Distance { key: p, .. }) = closest.first() {
             //    bipartite_graph.add_directed_edge(p, q + query_count)
             //}
-            let e = 5;
-            for &Distance { key: p, .. } in closest.iter().take(e) {
-                bipartite_graph.add_edge(p, q + query_count)
+            for &Distance { key: p, .. } in closest.iter().take(self.options.e) {
+                bipartite_graph.add_edge(p, q + queries.len())
             }
-            for &Distance { key: p, .. } in closest.iter().skip(e) {
-                bipartite_graph.add_directed_edge(q + query_count, p);
+            for &Distance { key: p, .. } in closest.iter().skip(self.options.e) {
+                bipartite_graph.add_directed_edge(q + queries.len(), p);
             }
         }
 
         let mut lists = bipartite_graph
             .adj_lists
             .iter()
+            .take(data.len())
             .cloned()
             .collect::<Vec<_>>();
         lists.sort_unstable_by_key(|l| l.len());
         lists.reverse();
-        info!("empty: {:?}", lists.iter().filter(|l| l.is_empty()).count());
+        let empty_cnt = lists.iter().filter(|l| l.is_empty()).count();
+        let non_empty_cnt = lists.iter().filter(|l| !l.is_empty()).count();
+        info!("empty: {empty_cnt}, not empty: {non_empty_cnt}");
+        info!("Top 5 most dense neighborhoods");
         for l in lists.iter().take(5) {
             info!("{:?}", l.len());
         }
@@ -237,6 +172,10 @@ impl ThesisIndexBuilder {
         info!("Projecting bipartite graph...");
         let mut projected_graph = AdjListGraph::with_nodes(data.iter().collect());
         self.neighborhood_aware_projection(bipartite_graph, &mut projected_graph);
+
+        if self.options.con {
+            self.connectivity_enhancement(&data, &mut projected_graph, entry);
+        }
 
         let (_, adj_lists) = projected_graph.consume();
 
@@ -250,56 +189,139 @@ impl ThesisIndexBuilder {
         }
     }
 
-    fn estimate_gt<'a, P: Point + Send + Sync>(
+    fn connectivity_enhancement<'a, P: Point + Send + Sync>(
         &self,
-        queries: &Vec<&'a P>,
-        data: &Vec<&P>,
-    ) -> Vec<Vec<Distance<'a, P>>> {
+        data: &Vec<P>,
+        projected_graph: &mut AdjListGraph<&'a P>,
+        entry: usize,
+    ) {
+        info!("Finding connectivity candidates...");
+        let all_candidates: Vec<(usize, MinMaxHeap<Distance<'_, &P>>)> = data
+            .par_iter()
+            .map(|p| projected_graph.search(&p, entry, self.options.m))
+            .enumerate()
+            .collect();
+
+        info!("Enhancing connectivity...");
+        let conn_graph = projected_graph.clone();
+        let nodes = &conn_graph.nodes;
+        let adj_locks: Vec<RwLock<HashSet<usize>>> = conn_graph
+            .adj_lists
+            .into_iter()
+            .map(|s| RwLock::new(s))
+            .collect();
+
+        all_candidates.into_par_iter().for_each(|(i, candidates)| {
+            let selected_neighbors = self.select_neighbors(candidates);
+            {
+                let mut adj_i = adj_locks[i].write().unwrap();
+                adj_i.clear();
+                adj_i.extend(selected_neighbors.iter().map(|d| d.key));
+            }
+
+            for p in &selected_neighbors {
+                let current_neighbors: Vec<usize> =
+                    { adj_locks[p.key].read().unwrap().iter().copied().collect() };
+                let p_candidates = MinMaxHeap::from_iter(
+                    current_neighbors
+                        .into_iter()
+                        .chain(std::iter::once(i))
+                        .map(|n| {
+                            let neighbor_point = &nodes[n];
+                            Distance::new(p.point.distance(neighbor_point), n, neighbor_point)
+                        }),
+                );
+                let p_neighbors: Vec<usize> = self
+                    .select_neighbors(p_candidates)
+                    .into_iter()
+                    .map(|d| d.key)
+                    .collect();
+                {
+                    let mut adj_p = adj_locks[p.key].write().unwrap();
+                    adj_p.clear();
+                    adj_p.extend(p_neighbors);
+                }
+            }
+        });
+
+        let conn_adj_lists: Vec<HashSet<usize>> = adj_locks
+            .into_iter()
+            .map(|l| l.into_inner().unwrap())
+            .collect();
+
+        (0..projected_graph.nodes().len())
+            .into_iter()
+            .for_each(|i| {
+                let mut final_neighbors =
+                    projected_graph.neighborhood(i).collect::<HashSet<usize>>();
+                final_neighbors.extend(conn_adj_lists[i].iter().copied());
+                projected_graph.set_neighbors(i, final_neighbors.into_iter());
+            });
+    }
+
+    fn build_nsw<'a, P: Point + Send + Sync>(&self, data: &Vec<&'a P>) -> NSW<&'a P> {
         info!("Constructing NSW graph...");
-        let query_count = queries.len();
-        let mut query_graph_builder = NSWBuilder::new(NSWOptions {
+        let mut graph_builder = NSWBuilder::new(NSWOptions {
             ef_construction: 96,
             connections: 32,
             max_connections: 96,
-            size: query_count,
+            size: data.len(),
         });
-        query_graph_builder.extend_parallel(queries.to_vec());
-        let query_graph = query_graph_builder.build();
+        graph_builder.extend_parallel(data.to_vec());
+        graph_builder.build()
+    }
 
-        // TODO: Make k and ef parameters
+    fn estimate_gt<'a, P: Point + Send + Sync>(
+        &self,
+        query_graph: &NSW<&'a P>,
+        data: &Vec<&P>,
+    ) -> Vec<Vec<Distance<'a, P>>> {
+        let mut estimated_gt: Vec<RwLock<Vec<Distance<P>>>> = vec![];
+        for _ in 0..query_graph.graph().size() {
+            estimated_gt.push(RwLock::new(vec![]));
+        }
+
         info!("Finding k-nearest query neighbors...");
-        query_graph
-            .knns(&data.to_vec(), 100, 200)
-            .into_iter()
-            .map(|dists| {
-                dists
-                    .into_iter()
-                    .map(|d| Distance::new(d.distance, d.key, queries[d.key]))
-                    .collect()
+        data.par_iter().enumerate().for_each(|(i, d)| {
+            let mut vis = HashSet::with_capacity(256);
+            let knn = if self.options.vis {
+                query_graph.search_vis(d, self.options.qk, self.options.qef, &mut vis)
+            } else {
+                query_graph.search(d, self.options.qk, self.options.qef)
+            };
+
+            for Distance {
+                key,
+                distance,
+                point: _point,
+            } in knn.into_iter().chain(vis.into_iter())
+            {
+                let mut l = estimated_gt[key].write().unwrap();
+                l.push(Distance::new(
+                    distance,
+                    i,
+                    query_graph.graph().nodes()[key],
+                ));
+
+                if l.len() > self.options.p * 2 {
+                    l.sort();
+                    l.truncate(self.options.p);
+                }
+            }
+        });
+        
+        info!("Pruning k-nearest query neighbors...");
+        estimated_gt
+            .into_par_iter()
+            .map(|knn| {
+                let mut knn = knn.into_inner().unwrap();
+                knn.sort();
+                knn.truncate(self.options.p);
+                knn
             })
             .collect()
     }
 
-    fn invert_knns<'a, P>(
-        &self,
-        inverted_count: usize,
-        knns: &Vec<Vec<Distance<'a, P>>>,
-    ) -> Vec<Vec<Distance<'a, P>>> {
-        let mut knns_inverted = vec![vec![]; inverted_count];
-        for (i, knn) in knns.iter().enumerate() {
-            for Distance {
-                key,
-                distance,
-                point,
-            } in knn
-            {
-                knns_inverted[*key].push(Distance::new(*distance, i, *point));
-            }
-        }
-        knns_inverted
-    }
-
-    #[allow(unused)]
     fn select_neighbors<'a, P: Point>(
         &self,
         mut candidates: MinMaxHeap<Distance<'a, P>>,
