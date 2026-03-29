@@ -285,9 +285,9 @@ impl ThesisIndexBuilder {
         data.par_iter().enumerate().for_each(|(i, d)| {
             let mut vis = HashSet::with_capacity(256);
             let knn = if self.options.vis {
-                query_graph.search_vis(d, self.options.qk, self.options.qef, &mut vis)
+                query_graph.search_vis(d, self.options.qk, &self.options.qef, &mut vis)
             } else {
-                query_graph.search(d, self.options.qk, self.options.qef)
+                query_graph.search(d, self.options.qk, &self.options.qef)
             };
 
             for Distance {
