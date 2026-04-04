@@ -1,4 +1,4 @@
-use hnsw_itu::{Distance, Graph, Index, IndexBuilder, IndexVis, NSW, Point};
+use hnsw_itu::{Distance, Graph, Index, IndexBuilder, IndexVis, NSW, Point, HNSWBuilder, HNSW};
 use hnsw_itu::{NSWBuilder, NSWOptions};
 use min_max_heap::MinMaxHeap;
 use rayon::prelude::*;
@@ -8,6 +8,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::RwLock;
 use tracing::info;
 
+type QueryGraph<P> = NSW<P>;
+type QueryGraphBuilder<P> = NSWBuilder<P>;
+
 #[derive(Serialize, Deserialize)]
 pub struct ThesisIndex<T> {
     pub entry: usize,
@@ -16,12 +19,6 @@ pub struct ThesisIndex<T> {
 
 pub trait Searchable<P: Point> {
     fn search(&'_ self, query: &P, entry: usize, ef: usize) -> MinMaxHeap<Distance<'_, P>>;
-}
-
-impl<P: Point> Searchable<P> for ThesisIndex<P> {
-    fn search(&'_ self, query: &P, entry: usize, ef: usize) -> MinMaxHeap<Distance<'_, P>> {
-        self.graph.search(query, entry, ef)
-    }
 }
 
 impl<P: Point> Searchable<P> for AdjListGraph<P> {
@@ -70,6 +67,20 @@ impl<P: Point> Searchable<P> for AdjListGraph<P> {
     }
 }
 
+impl<P: Point> Index<P> for ThesisIndex<P> {
+    type Options = usize;
+    type Query = P;
+
+    fn size(&self) -> usize {
+        self.graph.size()
+    }
+
+    fn search(&'_ self, query: &P, k: usize, ef: &Self::Options) -> Vec<Distance<'_, P>> {
+        self.graph.search(query, self.entry, *ef).drain_asc().take(k).collect()
+    }
+}
+
+
 #[derive(Debug, Clone)]
 pub struct ThesisIndexOptions {
     /// Out-degree bound
@@ -104,7 +115,7 @@ impl ThesisIndexBuilder {
         queries: &Vec<P>,
         data: Vec<P>,
     ) -> ThesisIndex<P> {
-        let query_graph = self.build_nsw(&queries.iter().collect());
+        let query_graph = self.build_query_graph(&queries.iter().collect());
         let estimated_gt = self.estimate_gt(&query_graph, &data.iter().collect());
 
         let mut counter = HashMap::new();
@@ -259,10 +270,10 @@ impl ThesisIndexBuilder {
             });
     }
 
-    fn build_nsw<'a, P: Point + Send + Sync>(&self, data: &Vec<&'a P>) -> NSW<&'a P> {
-        info!("Constructing NSW graph...");
-        let mut graph_builder = NSWBuilder::new(NSWOptions {
-            ef_construction: 96,
+    fn build_query_graph<'a, P: Point + Send + Sync>(&self, data: &Vec<&'a P>) -> QueryGraph<&'a P> {
+        info!("Constructing Query graph...");
+        let mut graph_builder = QueryGraphBuilder::new(NSWOptions {
+            ef_construction: 500,
             connections: 32,
             max_connections: 96,
             size: data.len(),
@@ -273,11 +284,11 @@ impl ThesisIndexBuilder {
 
     fn estimate_gt<'a, P: Point + Send + Sync>(
         &self,
-        query_graph: &NSW<&'a P>,
+        query_graph: &QueryGraph<&'a P>,
         data: &Vec<&P>,
     ) -> Vec<Vec<Distance<'a, P>>> {
         let mut estimated_gt: Vec<RwLock<Vec<Distance<P>>>> = vec![];
-        for _ in 0..query_graph.graph().size() {
+        for _ in 0..query_graph.size() {
             estimated_gt.push(RwLock::new(vec![]));
         }
 
