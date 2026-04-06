@@ -6,6 +6,7 @@ use roargraph::AdjListGraph;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::RwLock;
+use ordered_float::OrderedFloat;
 use tracing::info;
 
 type QueryGraph<P> = NSW<P>;
@@ -152,14 +153,11 @@ impl ThesisIndexBuilder {
         let mut bipartite_graph =
             AdjListGraph::with_nodes_additional(data.iter().collect(), queries.len());
         for (q, closest) in estimated_gt.iter().enumerate() {
-            //if let Some(&Distance { key: p, .. }) = closest.first() {
-            //    bipartite_graph.add_directed_edge(p, q + query_count)
-            //}
             for &Distance { key: p, .. } in closest.iter().take(self.options.e) {
-                bipartite_graph.add_edge(p, q + queries.len())
+                bipartite_graph.add_edge(p, q + data.len())
             }
             for &Distance { key: p, .. } in closest.iter().skip(self.options.e) {
-                bipartite_graph.add_directed_edge(q + queries.len(), p);
+                bipartite_graph.add_directed_edge(q + data.len(), p);
             }
         }
 
@@ -285,7 +283,7 @@ impl ThesisIndexBuilder {
     fn estimate_gt<'a, P: Point + Send + Sync>(
         &self,
         query_graph: &QueryGraph<&'a P>,
-        data: &Vec<&P>,
+        data: &Vec<&'a P>,
     ) -> Vec<Vec<Distance<'a, P>>> {
         let mut estimated_gt: Vec<RwLock<Vec<Distance<P>>>> = vec![];
         for _ in 0..query_graph.size() {
@@ -311,7 +309,7 @@ impl ThesisIndexBuilder {
                 l.push(Distance::new(
                     distance,
                     i,
-                    query_graph.graph().nodes()[key],
+                    data[i],
                 ));
 
                 if l.len() > self.options.p * 2 {

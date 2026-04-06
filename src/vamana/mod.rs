@@ -1,7 +1,6 @@
 use hnsw_itu::{Distance, Point};
 use min_max_heap::MinMaxHeap;
 use rand::seq::IteratorRandom;
-use rand::thread_rng;
 use roargraph::AdjListGraph;
 use std::collections::{HashMap, HashSet};
 
@@ -37,13 +36,13 @@ fn find_medoids<P: Point>(
         }
     }
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     for &f in filters {
         let sample = label_map
             .get(&f)
             .unwrap()
             .iter()
-            .choose_multiple(&mut rng, threshold);
+            .sample(&mut rng, threshold);
         let (entry, _) = sample
             .iter()
             .map(|&i| (i, counter.get(&f).unwrap()))
