@@ -1,17 +1,12 @@
-use crate::thesis_index::{Builder, BuilderExt, ThesisIndexOptions, plain};
-use hnsw_itu::{Distance, Graph, HNSW, HNSWBuilder, Index, IndexBuilder, IndexVis, NSW, Point};
+use crate::thesis_index::{Builder, BuilderExt, ThesisIndexOptions};
+use hnsw_itu::{Distance, Index, IndexBuilder, IndexVis, NSW, Point};
 use hnsw_itu::{NSWBuilder, NSWOptions};
-use min_max_heap::MinMaxHeap;
-use ordered_float::OrderedFloat;
 use rayon::prelude::*;
 use roargraph::AdjListGraph;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::RwLock;
 use tracing::info;
-
-type QueryGraph<P> = NSW<P>;
-type QueryGraphBuilder<P> = NSWBuilder<P>;
 
 #[derive(Serialize, Deserialize)]
 pub struct ThesisIndex<T> {
@@ -54,9 +49,9 @@ impl<P: Point + Send + Sync> Builder<P> for ThesisIndexBuilder {
         &self.options
     }
 
-    fn build(self, queries: &Vec<P>, data: Vec<P>) -> Self::Index {
-        let query_graph = self.build_query_graph(&queries.iter().collect());
-        let estimated_gt = self.estimate_gt(&query_graph, &data.iter().collect());
+    fn build(self, queries: &[P], data: Vec<P>) -> Self::Index {
+        let query_graph = self.build_query_graph(&queries.iter().collect::<Vec<_>>());
+        let estimated_gt = self.estimate_gt(&query_graph, &data.iter().collect::<Vec<_>>());
 
         info!("Computing most common nearest neighbor...");
         let mut counter = HashMap::new();
@@ -73,7 +68,7 @@ impl<P: Point + Send + Sync> Builder<P> for ThesisIndexBuilder {
             .expect("no points");
 
         info!("Constructing bipartite graph...");
-        let mut bipartite_graph =
+        let bipartite_graph =
             self.bipartite_projection(data.iter().collect(), queries.len(), estimated_gt);
 
         info!("Projecting bipartite graph...");
@@ -96,7 +91,7 @@ impl<P: Point + Send + Sync> Builder<P> for ThesisIndexBuilder {
         }
     }
 
-    fn build_query_graph<'a>(&self, data: &Vec<&'a P>) -> Self::QueryGraph<'a> {
+    fn build_query_graph<'a>(&self, data: &[&'a P]) -> Self::QueryGraph<'a> {
         info!("Constructing Query graph...");
         let mut graph_builder = NSWBuilder::new(NSWOptions {
             ef_construction: 500,
@@ -112,7 +107,7 @@ impl<P: Point + Send + Sync> Builder<P> for ThesisIndexBuilder {
     fn estimate_gt<'a>(
         &self,
         query_graph: &Self::QueryGraph<'a>,
-        data: &Vec<&'a P>,
+        data: &[&'a P],
     ) -> Vec<Vec<Distance<'a, P>>> {
         let mut estimated_gt: Vec<RwLock<Vec<Distance<P>>>> = vec![];
         for _ in 0..query_graph.size() {

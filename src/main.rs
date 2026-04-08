@@ -26,9 +26,9 @@ fn main() {
     tracing_subscriber::registry().with(fmt::layer()).init();
 
     //let path = Path::new("../datasets/data.exclude/arxiv-nomic-768-normalized.hdf5");
-    let path = Path::new("../datasets/data.exclude/laion-clip-512-normalized.hdf5");
+    //let path = Path::new("../datasets/data.exclude/laion-clip-512-normalized.hdf5");
     //let path = Path::new("../datasets/data.exclude/coco-nomic-768-normalized.hdf5");
-    //let path = Path::new("../datasets/data.exclude/llama-128-ip.hdf5");
+    let path = Path::new("../datasets/data.exclude/llama-128-ip.hdf5");
     //let path = Path::new("../datasets/data.exclude/yi-128-ip.hdf5");
     //let path = Path::new("../datasets/data.exclude/imagenet-align-640-normalized.hdf5");
     //let path = Path::new("../datasets/data.exclude/imagenet-clip-512-normalized.hdf5");
@@ -57,7 +57,7 @@ fn main() {
         m: 32,
         l: 500,
         p: 100,
-        e: 2,
+        e: 16,
         qk: 0,
         qef: 100,
         con: false,
@@ -77,12 +77,14 @@ fn main() {
     let graph_file = Path::new(graph_file_name.as_str());
     let graph_metadata = create_if_not_exists(graph_file, || {
         info!("Building index...");
-        let index = ThesisIndexBuilder::new(options).build(
-            &queries.iter().take(build_count).cloned().collect(),
-            corpus.iter().cloned().collect(),
-        );
-
-        index
+        ThesisIndexBuilder::new(options).build(
+            &queries
+                .iter()
+                .take(build_count)
+                .cloned()
+                .collect::<Vec<_>>(),
+            corpus.to_vec(),
+        )
     });
 
     let graph = graph_metadata.value;
@@ -92,7 +94,7 @@ fn main() {
         path.file_name().unwrap().to_str().unwrap()
     );
     let mut file = File::create(outfile).unwrap();
-    for p in graph.graph.adj_lists().into_iter() {
+    for p in graph.graph.adj_lists().iter() {
         writeln!(file, "{}", p.len()).unwrap();
     }
 
@@ -138,11 +140,10 @@ fn main() {
             info!("Building HNSW index...");
             let mut builder = HNSWBuilder::new(options);
             builder.extend_parallel(corpus.iter().cloned());
-            let hnsw = builder.build();
 
-            hnsw
+            builder.build()
         });
-        indices.push(("HNSW", TestIndex::HNSW(hnsw.value), hnsw.build_time));
+        indices.push(("HNSW", TestIndex::Hnsw(hnsw.value), hnsw.build_time));
     }
 
     if true {
@@ -165,9 +166,9 @@ fn main() {
         let roargraph_file = Path::new(roargraph_file_name.as_str());
         let roargraph = create_if_not_exists(roargraph_file, || {
             info!("Building RoarGraph index (query count: {build_count})...");
-            let roargraph = roargraph::RoarGraphBuilder::new(options).build(
+            roargraph::RoarGraphBuilder::new(options).build(
                 queries.iter().take(build_count).cloned().collect(),
-                corpus.iter().cloned().collect(),
+                corpus.to_vec(),
                 build_ground_truth
                     .value
                     .iter()
@@ -175,9 +176,7 @@ fn main() {
                     .cloned()
                     .map(|v| v.into_iter().map(|(i, _)| i).collect())
                     .collect(),
-            );
-
-            roargraph
+            )
         });
         indices.push((
             "RoarGraph",
@@ -294,17 +293,17 @@ fn print_rows<T>(
 fn compute_ground_truth(
     filename: &str,
     queries: &[Row<f32>],
-    corpus: &Vec<Row<f32>>,
+    corpus: &[Row<f32>],
 ) -> WithMetadata<Vec<Vec<(usize, f32)>>> {
     create_if_not_exists(Path::new(filename), || {
         info!("Computing ground truth nearest neighbors...");
-        let ground_truth = queries
+        queries
             .par_iter()
             .map(|q| {
                 let mut closest = corpus
                     .iter()
                     .enumerate()
-                    .map(|(k, d)| Distance::new(d.distance(&q), k, d))
+                    .map(|(k, d)| Distance::new(d.distance(q), k, d))
                     .min_k(100);
                 closest.sort();
                 closest
@@ -312,15 +311,13 @@ fn compute_ground_truth(
                     .map(|d| (d.key, d.distance))
                     .collect::<Vec<_>>()
             })
-            .collect::<Vec<_>>();
-
-        ground_truth
+            .collect::<Vec<_>>()
     })
 }
 
 fn evaluate_recall(
-    queries: &Vec<Row<f32>>,
-    ground_truth: &Vec<Vec<(usize, f32)>>,
+    queries: &[Row<f32>],
+    ground_truth: &[Vec<(usize, f32)>],
     params: &Vec<(usize, usize)>,
     index: &TestIndex<Row<f32>>,
 ) -> (Vec<f32>, Vec<Duration>) {
@@ -348,7 +345,7 @@ fn evaluate_recall(
                 let knn = knn.iter().copied().collect::<HashSet<_>>();
 
                 let start = Instant::now();
-                let mut found = index.search(query, *k, &ef);
+                let mut found = index.search(query, *k, ef);
                 let elapsed = start.elapsed();
                 let found = found
                     .drain(..)
@@ -375,7 +372,7 @@ fn create_if_not_exists<T: Serialize + DeserializeOwned, C: FnOnce() -> T>(
 ) -> WithMetadata<T> {
     if path.exists() {
         info!("Reading {path:?}");
-        let reader = BufReader::new(File::open(&path).unwrap());
+        let reader = BufReader::new(File::open(path).unwrap());
         deserialize_from(reader).unwrap()
     } else {
         info!("Creating {path:?}");
@@ -418,7 +415,7 @@ impl Point for Row<f32> {
 
 enum TestIndex<P> {
     Thesis(ThesisIndex<P>),
-    HNSW(HNSW<P>),
+    Hnsw(HNSW<P>),
     RoarGraph(RoarGraph<P>),
 }
 
@@ -428,7 +425,7 @@ impl<P: Point> Index<P> for TestIndex<P> {
     fn size(&self) -> usize {
         match self {
             TestIndex::Thesis(index) => index.size(),
-            TestIndex::HNSW(index) => index.size(),
+            TestIndex::Hnsw(index) => index.size(),
             TestIndex::RoarGraph(index) => index.size(),
         }
     }
@@ -439,7 +436,7 @@ impl<P: Point> Index<P> for TestIndex<P> {
     {
         match self {
             TestIndex::Thesis(index) => index.search(query, k, options),
-            TestIndex::HNSW(index) => index.search(query, k, options),
+            TestIndex::Hnsw(index) => index.search(query, k, options),
             TestIndex::RoarGraph(index) => index.search(query, k, options),
         }
     }

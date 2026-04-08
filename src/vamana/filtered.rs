@@ -3,7 +3,6 @@ use crate::vamana::GraphExt;
 use crate::vamana::index::{FilteredVamana, FilteredVamanaSearchOptions};
 use hnsw_itu::{Distance, Index, IndexBuilder, IndexVis, Point};
 use min_max_heap::MinMaxHeap;
-use roargraph::AdjListGraph;
 use std::collections::{HashMap, HashSet};
 
 pub struct FilteredVamanaOptions {
@@ -78,7 +77,7 @@ impl<P: Point> IndexBuilder<P> for FilteredVamanaBuilder<P> {
     }
 
     fn build(mut self) -> Self::Index {
-        let start_nodes = find_medoids(
+        self.index.start_nodes = find_medoids(
             &self.index.graph.nodes,
             &self.labels,
             self.options.threshold,
@@ -87,10 +86,6 @@ impl<P: Point> IndexBuilder<P> for FilteredVamanaBuilder<P> {
         for i in 0..self.index.size() {
             let point = self.index.graph.get(i).unwrap();
             let point_labels = self.labels.get(&i).unwrap();
-            let search_start = point_labels
-                .iter()
-                .map(|f| start_nodes[f])
-                .collect::<Vec<_>>();
 
             let search_options = FilteredVamanaSearchOptions {
                 ef: self.options.l,

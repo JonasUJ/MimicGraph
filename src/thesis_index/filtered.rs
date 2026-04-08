@@ -26,7 +26,33 @@ impl<P: Point> Index<P> for FilteredThesisIndex<P> {
     where
         P: Point,
     {
-        self.graph.filtered_search(query, k, &self.labels, options)
+        let mut visited = HashSet::with_capacity(2048);
+        self.search_vis(query, k, options, &mut visited)
+    }
+}
+
+impl<P: Point> IndexVis<P> for FilteredThesisIndex<P> {
+    fn search_vis<'a>(
+        &'a self,
+        query: &P,
+        k: usize,
+        options: &Self::Options<'_>,
+        vis: &mut HashSet<Distance<'a, P>>,
+    ) -> Vec<Distance<'a, P>> {
+        let search_start = options
+            .labels
+            .iter()
+            .map(|f| self.start_nodes[f])
+            .collect::<Vec<_>>();
+
+        let search_options = FilteredSearchOptions {
+            ef: options.ef,
+            start_nodes: &search_start,
+            labels: options.labels,
+        };
+
+        self.graph
+            .filtered_search_vis(query, k, &self.labels, &search_options, vis)
     }
 }
 
@@ -58,15 +84,15 @@ impl<P: Point + Send + Sync> Builder<P> for FilteredThesisIndexBuilder {
         &self.options.base_options
     }
 
-    fn build(self, queries: &Vec<P>, data: Vec<P>) -> Self::Index {
-        let query_graph = self.build_query_graph(&queries.iter().collect());
-        let estimated_gt = self.estimate_gt(&query_graph, &data.iter().collect());
+    fn build(self, queries: &[P], data: Vec<P>) -> Self::Index {
+        let query_graph = self.build_query_graph(&queries.iter().collect::<Vec<_>>());
+        let estimated_gt = self.estimate_gt(&query_graph, &data.iter().collect::<Vec<_>>());
 
         info!("Finding start nodes...");
         let start_nodes = find_medoids(&data, &self.options.labels, self.options.threshold);
 
         info!("Constructing bipartite graph...");
-        let mut bipartite_graph =
+        let bipartite_graph =
             self.bipartite_projection(data.iter().collect(), queries.len(), estimated_gt);
 
         info!("Projecting bipartite graph...");
@@ -91,7 +117,7 @@ impl<P: Point + Send + Sync> Builder<P> for FilteredThesisIndexBuilder {
         }
     }
 
-    fn build_query_graph<'a>(&self, data: &Vec<&'a P>) -> Self::QueryGraph<'a> {
+    fn build_query_graph<'a>(&self, data: &[&'a P]) -> Self::QueryGraph<'a> {
         info!("Constructing Query graph...");
         let mut graph_builder = FilteredVamanaBuilder::new(FilteredVamanaOptions::default());
         graph_builder.extend(data.to_vec());
@@ -102,7 +128,7 @@ impl<P: Point + Send + Sync> Builder<P> for FilteredThesisIndexBuilder {
     fn estimate_gt<'a>(
         &self,
         query_graph: &Self::QueryGraph<'a>,
-        data: &Vec<&'a P>,
+        data: &[&'a P],
     ) -> Vec<Vec<Distance<'a, P>>> {
         let options = &self.options.base_options;
 

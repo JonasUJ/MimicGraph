@@ -54,7 +54,7 @@ impl<P: Point> GraphExt<P> for AdjListGraph<P> {
                 let other_labels = labels.get(&other.key).expect("labels not found for point");
                 // if other intersection p is not a subset of candidate
                 if other_labels
-                    .intersection(&p_labels)
+                    .intersection(p_labels)
                     .any(|i| !candidate_labels.contains(i))
                 {
                     continue;

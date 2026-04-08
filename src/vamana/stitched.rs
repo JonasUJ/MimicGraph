@@ -9,7 +9,7 @@ pub struct StitchedVamanaBuilder<P> {
 impl<P: Point> IndexBuilder<P> for StitchedVamanaBuilder<P> {
     type Index = FilteredVamana<P>;
 
-    fn add(&mut self, point: P) {
+    fn add(&mut self, _point: P) {
         todo!()
     }
 

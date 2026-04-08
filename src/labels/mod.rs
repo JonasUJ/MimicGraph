@@ -15,7 +15,7 @@ pub fn find_medoids<P: Point>(
 
     let mut label_map = HashMap::new();
 
-    for (i, point, labels) in data
+    for (i, _, labels) in data
         .iter()
         .enumerate()
         .map(|(i, p)| (i, p, labels.get(&i).unwrap()))
@@ -95,7 +95,7 @@ impl<P: Point> FilteredGraphExt<P> for AdjListGraph<P> {
         for &s in options.start_nodes.iter() {
             let s_point = self.get(s).unwrap();
             let s_labels = labels.get(&s).unwrap();
-            if s_labels.intersection(&options.labels).next().is_some() {
+            if s_labels.intersection(options.labels).next().is_some() {
                 candidates.push(Distance::new(s_point.distance(query), s, s_point));
             }
         }
@@ -113,7 +113,7 @@ impl<P: Point> FilteredGraphExt<P> for AdjListGraph<P> {
                     return None;
                 }
 
-                if options.labels.intersection(&n_labels).next().is_some() {
+                if options.labels.intersection(n_labels).next().is_some() {
                     return Some(Distance::new(n_point.distance(query), n, n_point));
                 }
 

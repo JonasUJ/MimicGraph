@@ -1,8 +1,8 @@
-use hnsw_itu::{Distance, Graph, HNSW, HNSWBuilder, Index, IndexBuilder, IndexVis, NSW, Point};
+use hnsw_itu::{Distance, Index, Point};
 use min_max_heap::MinMaxHeap;
 use rayon::prelude::*;
 use roargraph::{AdjListGraph, select_neighbors, select_neighbors_max};
-use std::collections::{HashSet};
+use std::collections::HashSet;
 use std::sync::RwLock;
 use tracing::info;
 
@@ -37,14 +37,14 @@ pub trait Builder<P: Point + Send + Sync> {
 
     fn options(&self) -> &ThesisIndexOptions;
 
-    fn build(self, queries: &Vec<P>, data: Vec<P>) -> Self::Index;
+    fn build(self, queries: &[P], data: Vec<P>) -> Self::Index;
 
-    fn build_query_graph<'a>(&self, data: &Vec<&'a P>) -> Self::QueryGraph<'a>;
+    fn build_query_graph<'a>(&self, data: &[&'a P]) -> Self::QueryGraph<'a>;
 
     fn estimate_gt<'a>(
         &self,
         query_graph: &Self::QueryGraph<'a>,
-        data: &Vec<&'a P>,
+        data: &[&'a P],
     ) -> Vec<Vec<Distance<'a, P>>>;
 }
 
@@ -56,10 +56,10 @@ trait BuilderExt<P: Point + Send + Sync> {
         estimated_gt: Vec<Vec<Distance<P>>>,
     ) -> AdjListGraph<&'a P>;
 
-    fn connectivity_enhancement<'a>(
+    fn connectivity_enhancement(
         &self,
-        data: &Vec<P>,
-        projected_graph: &mut AdjListGraph<&'a P>,
+        data: &[P],
+        projected_graph: &mut AdjListGraph<&P>,
         entry: usize,
     );
 
@@ -95,10 +95,10 @@ where
         bipartite_graph
     }
 
-    fn connectivity_enhancement<'a>(
+    fn connectivity_enhancement(
         &self,
-        data: &Vec<P>,
-        projected_graph: &mut AdjListGraph<&'a P>,
+        data: &[P],
+        projected_graph: &mut AdjListGraph<&P>,
         entry: usize,
     ) {
         info!("Finding connectivity candidates...");
@@ -111,11 +111,8 @@ where
         info!("Enhancing connectivity...");
         let conn_graph = projected_graph.clone();
         let nodes = &conn_graph.nodes;
-        let adj_locks: Vec<RwLock<HashSet<usize>>> = conn_graph
-            .adj_lists
-            .into_iter()
-            .map(|s| RwLock::new(s))
-            .collect();
+        let adj_locks: Vec<RwLock<HashSet<usize>>> =
+            conn_graph.adj_lists.into_iter().map(RwLock::new).collect();
 
         all_candidates.into_par_iter().for_each(|(i, candidates)| {
             let selected_neighbors = select_neighbors(candidates.into(), self.options().m);
@@ -154,14 +151,11 @@ where
             .map(|l| l.into_inner().unwrap())
             .collect();
 
-        (0..projected_graph.nodes().len())
-            .into_iter()
-            .for_each(|i| {
-                let mut final_neighbors =
-                    projected_graph.neighborhood(i).collect::<HashSet<usize>>();
-                final_neighbors.extend(conn_adj_lists[i].iter().copied());
-                projected_graph.set_neighbors(i, final_neighbors.into_iter());
-            });
+        for (i, list) in conn_adj_lists.iter().enumerate() {
+            let mut final_neighbors = projected_graph.neighborhood(i).collect::<HashSet<usize>>();
+            final_neighbors.extend(list.iter().copied());
+            projected_graph.set_neighbors(i, final_neighbors.into_iter());
+        }
     }
 
     fn neighborhood_aware_projection(
@@ -173,11 +167,11 @@ where
         let adj_locks: Vec<RwLock<HashSet<usize>>> = projected_graph
             .adj_lists
             .drain(..)
-            .map(|s| RwLock::new(s))
+            .map(RwLock::new)
             .collect();
 
         (0..nodes.len()).into_par_iter().for_each(|x| {
-            let mut out_neighbors = bipartite_graph.neighborhood(x).into_iter().peekable();
+            let mut out_neighbors = bipartite_graph.neighborhood(x).peekable();
             if out_neighbors.peek().is_none() {
                 return;
             }

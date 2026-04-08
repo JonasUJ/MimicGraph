@@ -1,13 +1,11 @@
 pub(crate) use crate::labels::{FilteredGraphExt, FilteredSearchOptions};
-use crate::vamana::filtered::FilteredVamanaOptions;
 use hnsw_itu::{Distance, Index, IndexVis, Point};
-use min_max_heap::MinMaxHeap;
 use roargraph::AdjListGraph;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 
 pub struct FilteredVamana<P> {
-    pub(crate) start_nodes: Vec<usize>,
+    pub(crate) start_nodes: HashMap<usize, usize>,
     pub(crate) graph: AdjListGraph<P>,
     pub(crate) labels: HashMap<usize, HashSet<usize>>,
 }
@@ -21,7 +19,7 @@ impl<P> FilteredVamana<P> {
 impl<P> Default for FilteredVamana<P> {
     fn default() -> Self {
         Self {
-            start_nodes: vec![],
+            start_nodes: HashMap::new(),
             graph: AdjListGraph::new(),
             labels: HashMap::new(),
         }
@@ -55,11 +53,18 @@ impl<P: Point> IndexVis<P> for FilteredVamana<P> {
         options: &Self::Options<'_>,
         vis: &mut HashSet<Distance<'a, P>>,
     ) -> Vec<Distance<'a, P>> {
+        let search_start = options
+            .labels
+            .iter()
+            .map(|f| self.start_nodes[f])
+            .collect::<Vec<_>>();
+
         let search_options = FilteredSearchOptions {
             ef: options.ef,
-            start_nodes: &self.start_nodes,
+            start_nodes: &search_start,
             labels: options.labels,
         };
+
         self.graph
             .filtered_search_vis(query, k, &self.labels, &search_options, vis)
     }
