@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use crate::thesisindex::{ThesisIndex, ThesisIndexBuilder, ThesisIndexOptions};
+use crate::thesis_index::plain::{ThesisIndex, ThesisIndexBuilder};
 use bincode::{deserialize_from, serialize_into};
 use hnsw_itu::{Distance, HNSW, HNSWBuilder, Index, IndexBuilder, MinK, NSWOptions, Point};
 use ndarray::Array1;
@@ -18,9 +18,11 @@ use tracing::info;
 use tracing_subscriber::fmt;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use crate::thesis_index::{Builder, ThesisIndexOptions};
 
-mod thesisindex;
-mod vamana;
+pub mod labels;
+pub mod thesis_index;
+pub mod vamana;
 
 fn main() {
     tracing_subscriber::registry().with(fmt::layer()).init();
@@ -57,7 +59,7 @@ fn main() {
         m: 32,
         l: 500,
         p: 100,
-        e: 16,
+        e: 2,
         qk: 0,
         qef: 100,
         con: false,

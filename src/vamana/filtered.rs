@@ -1,5 +1,6 @@
+use crate::labels::find_medoids;
 use crate::vamana::index::{FilteredVamana, FilteredVamanaSearchOptions};
-use crate::vamana::{GraphExt, LabelledPoint, find_medoids};
+use crate::vamana::{GraphExt, LabelledPoint};
 use hnsw_itu::{Distance, Index, IndexBuilder, IndexVis, Point};
 use min_max_heap::MinMaxHeap;
 use roargraph::AdjListGraph;
