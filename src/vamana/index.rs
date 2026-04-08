@@ -33,7 +33,6 @@ pub struct FilteredVamanaSearchOptions {
 
 impl<P: Point> Index<LabelledPoint<P>> for FilteredVamana<LabelledPoint<P>> {
     type Options = FilteredVamanaSearchOptions;
-    type Query = LabelledPoint<P>;
 
     fn size(&self) -> usize {
         self.graph.size()
@@ -41,7 +40,7 @@ impl<P: Point> Index<LabelledPoint<P>> for FilteredVamana<LabelledPoint<P>> {
 
     fn search(
         &'_ self,
-        query: &Self::Query,
+        query: &LabelledPoint<P>,
         k: usize,
         options: &Self::Options,
     ) -> Vec<Distance<'_, LabelledPoint<P>>> {
@@ -53,7 +52,7 @@ impl<P: Point> Index<LabelledPoint<P>> for FilteredVamana<LabelledPoint<P>> {
 impl<P: Point> IndexVis<LabelledPoint<P>> for FilteredVamana<LabelledPoint<P>> {
     fn search_vis<'a>(
         &'a self,
-        query: &Self::Query,
+        query: &LabelledPoint<P>,
         k: usize,
         options: &Self::Options,
         vis: &mut HashSet<Distance<'a, LabelledPoint<P>>>,

@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use crate::thesisindex::{Searchable, ThesisIndex, ThesisIndexBuilder, ThesisIndexOptions};
+use crate::thesisindex::{ThesisIndex, ThesisIndexBuilder, ThesisIndexOptions};
 use bincode::{deserialize_from, serialize_into};
 use hnsw_itu::{Distance, HNSW, HNSWBuilder, Index, IndexBuilder, MinK, NSWOptions, Point};
 use ndarray::Array1;
@@ -26,11 +26,11 @@ fn main() {
     tracing_subscriber::registry().with(fmt::layer()).init();
 
     //let path = Path::new("../datasets/data.exclude/arxiv-nomic-768-normalized.hdf5");
-    //let path = Path::new("../datasets/data.exclude/laion-clip-512-normalized.hdf5");
+    let path = Path::new("../datasets/data.exclude/laion-clip-512-normalized.hdf5");
     //let path = Path::new("../datasets/data.exclude/coco-nomic-768-normalized.hdf5");
     //let path = Path::new("../datasets/data.exclude/llama-128-ip.hdf5");
     //let path = Path::new("../datasets/data.exclude/yi-128-ip.hdf5");
-    let path = Path::new("../datasets/data.exclude/imagenet-align-640-normalized.hdf5");
+    //let path = Path::new("../datasets/data.exclude/imagenet-align-640-normalized.hdf5");
     //let path = Path::new("../datasets/data.exclude/imagenet-clip-512-normalized.hdf5");
     //let path = Path::new("../datasets/data.exclude/LAION1M.hdf5");
     //let path = Path::new("../datasets/data.exclude/YFCC-10M.hdf5");
@@ -40,12 +40,12 @@ fn main() {
     let dataset = BufferedDataset::<'_, Row<f32>, _>::open(path, "points")
         .or_else(|_| BufferedDataset::<'_, Row<f32>, _>::open(path, "train"))
         .unwrap();
-    let num_corpus = 250_000.min(dataset.size());
+    //let num_corpus = 250_000.min(dataset.size());
     //let num_corpus = 1_000_000.min(dataset.size());
-    //let num_corpus = 10_000_000.min(dataset.size());
+    let num_corpus = 10_000_000.min(dataset.size());
     info!("Corpus size: {} of {}", num_corpus, dataset.size());
     let corpus = dataset.into_iter().take(num_corpus).collect::<Vec<_>>();
-    let build_count = corpus.len() / 20;
+    let build_count = corpus.len() / 100;
     let eval_count = 10_000;
     let queries = BufferedDataset::<'_, Row<f32>, _>::open(path, "query_points")
         .or_else(|_| BufferedDataset::<'_, Row<f32>, _>::open(path, "learn"))
@@ -57,7 +57,7 @@ fn main() {
         m: 32,
         l: 500,
         p: 100,
-        e: 8,
+        e: 16,
         qk: 0,
         qef: 100,
         con: false,
@@ -187,8 +187,9 @@ fn main() {
     }
 
     info!(
-        "Evaluating recall (eval queries: {})...",
-        eval_queries.len()
+        "Evaluating recall (eval queries: {}, threads: {})...",
+        eval_queries.len(),
+        rayon::current_num_threads()
     );
     let params = vec![
         (10, 10),
@@ -333,6 +334,11 @@ fn evaluate_recall(
         .zip(queries.iter())
         .collect::<Vec<_>>();
 
+    // Warm up
+    eval_ground_truth.par_iter().for_each(|(_, query)| {
+        let _ = index.search(query, 1, &1);
+    });
+
     let mut recalls = Vec::new();
     let mut spqs = Vec::new();
     for (k, ef) in params {
@@ -418,7 +424,6 @@ enum TestIndex<P> {
 
 impl<P: Point> Index<P> for TestIndex<P> {
     type Options = usize;
-    type Query = P;
 
     fn size(&self) -> usize {
         match self {
@@ -428,21 +433,14 @@ impl<P: Point> Index<P> for TestIndex<P> {
         }
     }
 
-    fn search(
-        &'_ self,
-        query: &Self::Query,
-        k: usize,
-        options: &Self::Options,
-    ) -> Vec<Distance<'_, P>>
+    fn search(&'_ self, query: &P, k: usize, options: &Self::Options) -> Vec<Distance<'_, P>>
     where
         P: Point,
     {
         match self {
             TestIndex::Thesis(index) => index.search(query, k, options),
             TestIndex::HNSW(index) => index.search(query, k, options),
-            TestIndex::RoarGraph(index) => {
-                index.search(query, *options).drain_asc().take(k).collect()
-            }
+            TestIndex::RoarGraph(index) => index.search(query, k, options),
         }
     }
 }

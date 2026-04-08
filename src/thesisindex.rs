@@ -18,66 +18,17 @@ pub struct ThesisIndex<T> {
     pub(crate) graph: AdjListGraph<T>,
 }
 
-pub trait Searchable<P: Point> {
-    fn search(&'_ self, query: &P, entry: usize, ef: usize) -> MinMaxHeap<Distance<'_, P>>;
-}
-
-impl<P: Point> Searchable<P> for AdjListGraph<P> {
-    fn search(&'_ self, query: &P, entry: usize, ef: usize) -> MinMaxHeap<Distance<'_, P>> {
-        let medoid_element = self.get(entry).expect("entry point was not in graph");
-        let query_distance = Distance::new(medoid_element.distance(query), entry, medoid_element);
-
-        let mut visited = HashSet::with_capacity(2048);
-        visited.insert(entry);
-        let mut w = MinMaxHeap::from_iter([query_distance.clone()]);
-        let mut candidates = MinMaxHeap::from_iter([query_distance]);
-
-        while !candidates.is_empty() {
-            let c = candidates.pop_min().expect("candidates can't be empty");
-            let f = w.peek_max().expect("w can't be empty");
-
-            if c.distance > f.distance {
-                break;
-            }
-
-            for e in self.neighborhood(c.key) {
-                if visited.contains(&e) {
-                    continue;
-                }
-
-                visited.insert(e);
-                let f = w.peek_max().expect("w can't be empty");
-
-                let point = self.get(e).unwrap();
-                let e_dist = Distance::new(point.distance(query), e, point);
-
-                if e_dist.distance >= f.distance && w.len() >= ef {
-                    continue;
-                }
-
-                candidates.push(e_dist.clone());
-                w.push(e_dist);
-
-                if w.len() > ef {
-                    w.pop_max();
-                }
-            }
-        }
-
-        w
-    }
-}
-
 impl<P: Point> Index<P> for ThesisIndex<P> {
     type Options = usize;
-    type Query = P;
 
     fn size(&self) -> usize {
         self.graph.size()
     }
 
     fn search(&'_ self, query: &P, k: usize, ef: &Self::Options) -> Vec<Distance<'_, P>> {
-        self.graph.search(query, self.entry, *ef).drain_asc().take(k).collect()
+        let mut res = self.graph.search(query, *ef, &self.entry);
+        res.truncate(k);
+        res
     }
 }
 
@@ -205,11 +156,11 @@ impl ThesisIndexBuilder {
         entry: usize,
     ) {
         info!("Finding connectivity candidates...");
-        let all_candidates: Vec<(usize, MinMaxHeap<Distance<'_, &P>>)> = data
+        let all_candidates = data
             .par_iter()
-            .map(|p| projected_graph.search(&p, entry, self.options.m))
+            .map(|p| projected_graph.search(&p, self.options.m, &entry))
             .enumerate()
-            .collect();
+            .collect::<Vec<_>>();
 
         info!("Enhancing connectivity...");
         let conn_graph = projected_graph.clone();
@@ -221,7 +172,7 @@ impl ThesisIndexBuilder {
             .collect();
 
         all_candidates.into_par_iter().for_each(|(i, candidates)| {
-            let selected_neighbors = self.select_neighbors(candidates);
+            let selected_neighbors = self.select_neighbors(candidates.into());
             {
                 let mut adj_i = adj_locks[i].write().unwrap();
                 adj_i.clear();

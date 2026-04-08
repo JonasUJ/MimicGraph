@@ -1,4 +1,3 @@
-use crate::thesisindex::Searchable;
 use crate::vamana::index::{FilteredVamana, FilteredVamanaSearchOptions};
 use crate::vamana::{GraphExt, LabelledPoint, find_medoids};
 use hnsw_itu::{Distance, Index, IndexBuilder, IndexVis, Point};
