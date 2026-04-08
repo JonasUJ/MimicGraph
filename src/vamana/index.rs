@@ -1,4 +1,4 @@
-use crate::vamana::LabelledPoint;
+pub(crate) use crate::labels::{FilteredGraphExt, FilteredSearchOptions};
 use crate::vamana::filtered::FilteredVamanaOptions;
 use hnsw_itu::{Distance, Index, IndexVis, Point};
 use min_max_heap::MinMaxHeap;
@@ -7,7 +7,9 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 
 pub struct FilteredVamana<P> {
+    pub(crate) start_nodes: Vec<usize>,
     pub(crate) graph: AdjListGraph<P>,
+    pub(crate) labels: HashMap<usize, HashSet<usize>>,
 }
 
 impl<P> FilteredVamana<P> {
@@ -19,77 +21,46 @@ impl<P> FilteredVamana<P> {
 impl<P> Default for FilteredVamana<P> {
     fn default() -> Self {
         Self {
+            start_nodes: vec![],
             graph: AdjListGraph::new(),
+            labels: HashMap::new(),
         }
     }
 }
 
 #[derive(Debug)]
-pub struct FilteredVamanaSearchOptions {
-    pub l: usize,
-    /// Start nodes
-    pub s: Vec<usize>,
+pub struct FilteredVamanaSearchOptions<'a> {
+    pub ef: usize,
+    pub labels: &'a HashSet<usize>,
 }
 
-impl<P: Point> Index<LabelledPoint<P>> for FilteredVamana<LabelledPoint<P>> {
-    type Options = FilteredVamanaSearchOptions;
+impl<P: Point> Index<P> for FilteredVamana<P> {
+    type Options<'a> = FilteredVamanaSearchOptions<'a>;
 
     fn size(&self) -> usize {
         self.graph.size()
     }
 
-    fn search(
-        &'_ self,
-        query: &LabelledPoint<P>,
-        k: usize,
-        options: &Self::Options,
-    ) -> Vec<Distance<'_, LabelledPoint<P>>> {
+    fn search(&'_ self, query: &P, k: usize, options: &Self::Options<'_>) -> Vec<Distance<'_, P>> {
         let mut visited = HashSet::with_capacity(2048);
         self.search_vis(query, k, options, &mut visited)
     }
 }
 
-impl<P: Point> IndexVis<LabelledPoint<P>> for FilteredVamana<LabelledPoint<P>> {
+impl<P: Point> IndexVis<P> for FilteredVamana<P> {
     fn search_vis<'a>(
         &'a self,
-        query: &LabelledPoint<P>,
+        query: &P,
         k: usize,
-        options: &Self::Options,
-        vis: &mut HashSet<Distance<'a, LabelledPoint<P>>>,
-    ) -> Vec<Distance<'a, LabelledPoint<P>>> {
-        let mut candidates = MinMaxHeap::with_capacity(options.l);
-
-        for &s in options.s.iter() {
-            let sp = self.graph.get(s).unwrap();
-            if sp.labels.intersection(&query.labels).next().is_some() {
-                candidates.push(Distance::new(sp.distance(query), s, sp));
-            }
-        }
-
-        while let Some(candidate) = candidates.pop_min() {
-            if vis.contains(&candidate) {
-                continue;
-            }
-            vis.insert(candidate.clone());
-
-            candidates.extend(self.graph.neighborhood(candidate.key).filter_map(|n| {
-                let np = self.graph.get(n).unwrap();
-                if vis.contains(&Distance::new(0.0, n, np)) {
-                    return None;
-                }
-
-                if query.labels.intersection(&np.labels).next().is_some() {
-                    return Some(Distance::new(np.distance(query), n, np));
-                }
-
-                None
-            }));
-
-            while candidates.len() >= options.l {
-                candidates.pop_max();
-            }
-        }
-
-        candidates.drain_asc().take(k).collect()
+        options: &Self::Options<'_>,
+        vis: &mut HashSet<Distance<'a, P>>,
+    ) -> Vec<Distance<'a, P>> {
+        let search_options = FilteredSearchOptions {
+            ef: options.ef,
+            start_nodes: &self.start_nodes,
+            labels: options.labels,
+        };
+        self.graph
+            .filtered_search_vis(query, k, &self.labels, &search_options, vis)
     }
 }

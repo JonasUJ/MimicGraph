@@ -1,6 +1,5 @@
-#![allow(unused)]
-
 use crate::thesis_index::plain::{ThesisIndex, ThesisIndexBuilder};
+use crate::thesis_index::{Builder, ThesisIndexOptions};
 use bincode::{deserialize_from, serialize_into};
 use hnsw_itu::{Distance, HNSW, HNSWBuilder, Index, IndexBuilder, MinK, NSWOptions, Point};
 use ndarray::Array1;
@@ -18,7 +17,6 @@ use tracing::info;
 use tracing_subscriber::fmt;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use crate::thesis_index::{Builder, ThesisIndexOptions};
 
 pub mod labels;
 pub mod thesis_index;
@@ -425,7 +423,7 @@ enum TestIndex<P> {
 }
 
 impl<P: Point> Index<P> for TestIndex<P> {
-    type Options = usize;
+    type Options<'a> = usize;
 
     fn size(&self) -> usize {
         match self {
@@ -435,7 +433,7 @@ impl<P: Point> Index<P> for TestIndex<P> {
         }
     }
 
-    fn search(&'_ self, query: &P, k: usize, options: &Self::Options) -> Vec<Distance<'_, P>>
+    fn search(&'_ self, query: &P, k: usize, options: &Self::Options<'_>) -> Vec<Distance<'_, P>>
     where
         P: Point,
     {

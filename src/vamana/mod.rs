@@ -1,34 +1,34 @@
 use hnsw_itu::{Distance, Point};
 use min_max_heap::MinMaxHeap;
-use rand::seq::IteratorRandom;
 use roargraph::AdjListGraph;
 use std::collections::{HashMap, HashSet};
-use crate::labels::LabelledPoint;
 
 pub mod filtered;
 pub mod index;
 pub mod stitched;
 
-
 trait GraphExt<P> {
     fn robust_prune<'a>(
         &'a self,
         point: usize,
-        candidates: &mut MinMaxHeap<Distance<'a, LabelledPoint<P>>>,
+        candidates: &mut MinMaxHeap<Distance<'a, P>>,
+        labels: &HashMap<usize, HashSet<usize>>,
         alpha: f32,
         max_degree: usize,
-    ) -> Vec<Distance<'a, LabelledPoint<P>>>;
+    ) -> Vec<Distance<'a, P>>;
 }
 
-impl<P: Point> GraphExt<P> for AdjListGraph<LabelledPoint<P>> {
+impl<P: Point> GraphExt<P> for AdjListGraph<P> {
     fn robust_prune<'a>(
         &'a self,
         point: usize,
-        candidates: &mut MinMaxHeap<Distance<'a, LabelledPoint<P>>>,
+        candidates: &mut MinMaxHeap<Distance<'a, P>>,
+        labels: &HashMap<usize, HashSet<usize>>,
         alpha: f32,
         max_degree: usize,
-    ) -> Vec<Distance<'a, LabelledPoint<P>>> {
+    ) -> Vec<Distance<'a, P>> {
         let p = self.get(point).expect("point not in graph");
+        let p_labels = labels.get(&point).expect("labels not found for point");
         let mut result = vec![];
         let mut ignore = HashSet::new();
 
@@ -38,6 +38,9 @@ impl<P: Point> GraphExt<P> for AdjListGraph<LabelledPoint<P>> {
         }));
 
         while let Some(candidate) = candidates.pop_min() {
+            let candidate_labels = labels
+                .get(&candidate.key)
+                .expect("labels not found for point");
             if ignore.contains(&candidate.key) {
                 continue;
             }
@@ -48,12 +51,11 @@ impl<P: Point> GraphExt<P> for AdjListGraph<LabelledPoint<P>> {
             }
 
             for other in candidates.iter() {
+                let other_labels = labels.get(&other.key).expect("labels not found for point");
                 // if other intersection p is not a subset of candidate
-                if other
-                    .point
-                    .labels
-                    .intersection(&p.labels)
-                    .any(|i| !candidate.point.labels.contains(i))
+                if other_labels
+                    .intersection(&p_labels)
+                    .any(|i| !candidate_labels.contains(i))
                 {
                     continue;
                 }

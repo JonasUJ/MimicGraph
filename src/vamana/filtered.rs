@@ -1,13 +1,12 @@
 use crate::labels::find_medoids;
+use crate::vamana::GraphExt;
 use crate::vamana::index::{FilteredVamana, FilteredVamanaSearchOptions};
-use crate::vamana::{GraphExt, LabelledPoint};
 use hnsw_itu::{Distance, Index, IndexBuilder, IndexVis, Point};
 use min_max_heap::MinMaxHeap;
 use roargraph::AdjListGraph;
 use std::collections::{HashMap, HashSet};
 
 pub struct FilteredVamanaOptions {
-    pub filters: HashSet<usize>,
     pub alpha: f32,
     /// Search list size
     pub l: usize,
@@ -20,7 +19,6 @@ pub struct FilteredVamanaOptions {
 impl Default for FilteredVamanaOptions {
     fn default() -> Self {
         Self {
-            filters: HashSet::default(),
             alpha: 1.2,
             l: 90,
             r: 96,
@@ -29,16 +27,10 @@ impl Default for FilteredVamanaOptions {
     }
 }
 
-impl FilteredVamanaOptions {
-    pub fn with_filters(mut self, filters: HashSet<usize>) -> Self {
-        self.filters = filters;
-        self
-    }
-}
-
 pub struct FilteredVamanaBuilder<P> {
     options: FilteredVamanaOptions,
     index: FilteredVamana<P>,
+    labels: HashMap<usize, HashSet<usize>>,
 }
 
 impl<P> FilteredVamanaBuilder<P> {
@@ -46,6 +38,7 @@ impl<P> FilteredVamanaBuilder<P> {
         Self {
             options,
             index: FilteredVamana::default(),
+            labels: HashMap::new(),
         }
     }
 }
@@ -56,42 +49,52 @@ impl<P> Default for FilteredVamanaBuilder<P> {
     }
 }
 
-impl<P: Point> FilteredVamanaBuilder<LabelledPoint<P>> {
+impl<P: Point> FilteredVamanaBuilder<P> {
     fn pruned_neighbor_keys<'a>(
         &'a self,
         node: usize,
-        mut candidates: MinMaxHeap<Distance<'a, LabelledPoint<P>>>,
+        mut candidates: MinMaxHeap<Distance<'a, P>>,
     ) -> Vec<usize> {
         self.index
             .graph
-            .robust_prune(node, &mut candidates, self.options.alpha, self.options.r)
+            .robust_prune(
+                node,
+                &mut candidates,
+                &self.labels,
+                self.options.alpha,
+                self.options.r,
+            )
             .iter()
             .map(|d| d.key)
             .collect()
     }
 }
 
-impl<P: Point> IndexBuilder<LabelledPoint<P>> for FilteredVamanaBuilder<LabelledPoint<P>> {
-    type Index = FilteredVamana<LabelledPoint<P>>;
+impl<P: Point> IndexBuilder<P> for FilteredVamanaBuilder<P> {
+    type Index = FilteredVamana<P>;
 
-    fn add(&mut self, point: LabelledPoint<P>) {
+    fn add(&mut self, point: P) {
         self.index.graph.add(point);
     }
 
     fn build(mut self) -> Self::Index {
         let start_nodes = find_medoids(
             &self.index.graph.nodes,
-            &self.options.filters,
+            &self.labels,
             self.options.threshold,
         );
 
         for i in 0..self.index.size() {
             let point = self.index.graph.get(i).unwrap();
-            let search_start = point.labels.iter().map(|f| start_nodes[f]).collect();
+            let point_labels = self.labels.get(&i).unwrap();
+            let search_start = point_labels
+                .iter()
+                .map(|f| start_nodes[f])
+                .collect::<Vec<_>>();
 
             let search_options = FilteredVamanaSearchOptions {
-                l: self.options.l,
-                s: search_start,
+                ef: self.options.l,
+                labels: point_labels,
             };
             let mut vis = HashSet::with_capacity(2048);
             let _ = self.index.search_vis(point, 0, &search_options, &mut vis);
@@ -123,8 +126,8 @@ impl<P: Point> IndexBuilder<LabelledPoint<P>> for FilteredVamanaBuilder<Labelled
     }
 }
 
-impl<P: Point> Extend<LabelledPoint<P>> for FilteredVamanaBuilder<LabelledPoint<P>> {
-    fn extend<T: IntoIterator<Item = LabelledPoint<P>>>(&mut self, iter: T) {
+impl<P: Point> Extend<P> for FilteredVamanaBuilder<P> {
+    fn extend<T: IntoIterator<Item = P>>(&mut self, iter: T) {
         for i in iter {
             self.add(i);
         }

@@ -20,13 +20,13 @@ pub struct ThesisIndex<T> {
 }
 
 impl<P: Point> Index<P> for ThesisIndex<P> {
-    type Options = usize;
+    type Options<'a> = usize;
 
     fn size(&self) -> usize {
         self.graph.size()
     }
 
-    fn search(&'_ self, query: &P, k: usize, ef: &Self::Options) -> Vec<Distance<'_, P>> {
+    fn search(&'_ self, query: &P, k: usize, ef: &Self::Options<'_>) -> Vec<Distance<'_, P>> {
         let mut res = self.graph.search(query, *ef, &self.entry);
         res.truncate(k);
         res
@@ -43,7 +43,7 @@ impl ThesisIndexBuilder {
     }
 }
 
-impl<P: Point + Clone + Send + Sync> Builder<P> for ThesisIndexBuilder {
+impl<P: Point + Send + Sync> Builder<P> for ThesisIndexBuilder {
     type Index = ThesisIndex<P>;
     type QueryGraph<'a>
         = NSW<&'a P>

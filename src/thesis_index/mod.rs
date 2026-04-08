@@ -1,11 +1,8 @@
 use hnsw_itu::{Distance, Graph, HNSW, HNSWBuilder, Index, IndexBuilder, IndexVis, NSW, Point};
-use hnsw_itu::{NSWBuilder, NSWOptions};
 use min_max_heap::MinMaxHeap;
-use ordered_float::OrderedFloat;
 use rayon::prelude::*;
-use roargraph::AdjListGraph;
-use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use roargraph::{AdjListGraph, select_neighbors, select_neighbors_max};
+use std::collections::{HashSet};
 use std::sync::RwLock;
 use tracing::info;
 
@@ -32,59 +29,7 @@ pub struct ThesisIndexOptions {
     pub(crate) vis: bool,
 }
 
-pub fn select_neighbors<'a, P: Point>(
-    mut candidates: MinMaxHeap<Distance<'a, P>>,
-    m: usize,
-) -> Vec<Distance<'a, P>> {
-    let mut return_list = Vec::<Distance<'a, P>>::new();
-
-    while let Some(e) = candidates.pop_min() {
-        if return_list.len() >= m {
-            break;
-        }
-
-        if return_list
-            .iter()
-            .all(|r| e.point.distance(r.point) > e.distance)
-        {
-            return_list.push(e);
-        }
-    }
-
-    return_list
-}
-
-pub fn select_neighbors_max<'a, T: Point>(
-    mut candidates: MinMaxHeap<Distance<'a, T>>,
-    m: usize,
-) -> Vec<Distance<'a, T>> {
-    if candidates.len() <= m {
-        return candidates.drain_asc().take(m).collect();
-    }
-
-    let mut return_list = Vec::<Distance<'a, T>>::new();
-    let mut rejects = MinMaxHeap::new();
-
-    while let Some(e) = candidates.pop_min() {
-        if return_list.len() >= m {
-            break;
-        }
-
-        if return_list
-            .iter()
-            .all(|r| e.point.distance(r.point) > e.distance)
-        {
-            return_list.push(e);
-        } else {
-            rejects.push(e);
-        }
-    }
-
-    return_list.extend(rejects.drain_asc().take(m - return_list.len()));
-    return_list
-}
-
-pub trait Builder<P: Point + Clone + Send + Sync> {
+pub trait Builder<P: Point + Send + Sync> {
     type Index: Index<P>;
     type QueryGraph<'a>: Index<&'a P>
     where
@@ -103,12 +48,12 @@ pub trait Builder<P: Point + Clone + Send + Sync> {
     ) -> Vec<Vec<Distance<'a, P>>>;
 }
 
-trait BuilderExt<P: Point + Clone + Send + Sync> {
+trait BuilderExt<P: Point + Send + Sync> {
     fn bipartite_projection<'a>(
         &self,
         data: Vec<&'a P>,
         query_count: usize,
-        estimated_gt: Vec<Vec<Distance<P>>>
+        estimated_gt: Vec<Vec<Distance<P>>>,
     ) -> AdjListGraph<&'a P>;
 
     fn connectivity_enhancement<'a>(
@@ -128,12 +73,16 @@ trait BuilderExt<P: Point + Clone + Send + Sync> {
 impl<B, P> BuilderExt<P> for B
 where
     B: Builder<P> + Sync,
-    P: Point + Clone + Send + Sync,
+    P: Point + Send + Sync,
 {
-    fn bipartite_projection<'a>(&self, data: Vec<&'a P>, query_count: usize, estimated_gt: Vec<Vec<Distance<P>>>) -> AdjListGraph<&'a P> {
+    fn bipartite_projection<'a>(
+        &self,
+        data: Vec<&'a P>,
+        query_count: usize,
+        estimated_gt: Vec<Vec<Distance<P>>>,
+    ) -> AdjListGraph<&'a P> {
         let data_count = data.len();
-        let mut bipartite_graph =
-            AdjListGraph::with_nodes_additional(data, query_count);
+        let mut bipartite_graph = AdjListGraph::with_nodes_additional(data, query_count);
         for (q, closest) in estimated_gt.iter().enumerate() {
             for &Distance { key: p, .. } in closest.iter().take(self.options().e) {
                 bipartite_graph.add_edge(p, q + data_count)
