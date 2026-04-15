@@ -5,7 +5,7 @@ use roargraph::AdjListGraph;
 use std::collections::{HashMap, HashSet};
 use std::sync::RwLock;
 
-pub type LabelSet = hi_sparse_bitset::BitSet<hi_sparse_bitset::config::_128bit>;
+pub type LabelSet = crate::bitset::Bitset;
 
 /// Returns true if two label sets share at least one element.
 #[inline]
