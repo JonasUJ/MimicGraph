@@ -1,13 +1,14 @@
-pub(crate) use crate::labels::{FilteredGraphExt, FilteredSearchOptions};
+pub(crate) use crate::labels::{FilteredGraphExt, FilteredSearchOptions, LabelSet};
 use hnsw_itu::{Distance, Index, IndexVis, Point};
 use roargraph::AdjListGraph;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::fmt::Debug;
 
+#[derive(Serialize, Deserialize)]
 pub struct FilteredVamana<P> {
     pub(crate) start_nodes: HashMap<usize, usize>,
     pub(crate) graph: AdjListGraph<P>,
-    pub(crate) labels: HashMap<usize, HashSet<usize>>,
+    pub(crate) labels: Vec<LabelSet>,
 }
 
 impl<P> FilteredVamana<P> {
@@ -21,15 +22,22 @@ impl<P> Default for FilteredVamana<P> {
         Self {
             start_nodes: HashMap::new(),
             graph: AdjListGraph::new(),
-            labels: HashMap::new(),
+            labels: Vec::new(),
         }
     }
 }
 
-#[derive(Debug)]
 pub struct FilteredVamanaSearchOptions<'a> {
     pub ef: usize,
-    pub labels: &'a HashSet<usize>,
+    pub labels: &'a LabelSet,
+}
+
+impl std::fmt::Debug for FilteredVamanaSearchOptions<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FilteredVamanaSearchOptions")
+            .field("ef", &self.ef)
+            .finish()
+    }
 }
 
 impl<P: Point> Index<P> for FilteredVamana<P> {
@@ -53,11 +61,15 @@ impl<P: Point> IndexVis<P> for FilteredVamana<P> {
         options: &Self::Options<'_>,
         vis: &mut HashSet<Distance<'a, P>>,
     ) -> Vec<Distance<'a, P>> {
-        let search_start = options
+        let search_start: Vec<usize> = options
             .labels
             .iter()
-            .map(|f| self.start_nodes[f])
-            .collect::<Vec<_>>();
+            .filter_map(|f| self.start_nodes.get(&f).copied())
+            .collect();
+
+        if search_start.is_empty() {
+            return vec![];
+        }
 
         let search_options = FilteredSearchOptions {
             ef: options.ef,

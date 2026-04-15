@@ -3,7 +3,7 @@ use hnsw_itu::{IndexBuilder, Point};
 use roargraph::AdjListGraph;
 
 pub struct StitchedVamanaBuilder<P> {
-    graph: AdjListGraph<P>,
+    _graph: AdjListGraph<P>,
 }
 
 impl<P: Point> IndexBuilder<P> for StitchedVamanaBuilder<P> {
