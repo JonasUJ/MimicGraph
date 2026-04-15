@@ -29,6 +29,7 @@ pub mod labels;
 pub mod point;
 pub mod thesis_index;
 pub mod vamana;
+pub mod bitset;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::registry().with(fmt::layer()).init();
