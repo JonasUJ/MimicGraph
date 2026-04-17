@@ -1,7 +1,7 @@
 use crate::WithMetadata;
 use crate::labels::LabelSet;
 use crate::point::Row;
-use crate::thesis_index::filtered::FilteredThesisIndex;
+use crate::thesis_index::filtered::{FilteredThesisIndex, FilteredThesisIndexSearchOptions};
 use crate::thesis_index::plain::ThesisIndex;
 use crate::vamana::index::{FilteredVamana, FilteredVamanaSearchOptions};
 use hnsw_itu::{Distance, HNSW, Index, MinK, Point};
@@ -47,7 +47,7 @@ pub enum FilteredTestIndex<P> {
 }
 
 impl<P: Point> Index<P> for FilteredTestIndex<P> {
-    type Options<'a> = FilteredVamanaSearchOptions<'a>;
+    type Options<'a> = FilteredThesisIndexSearchOptions<'a>;
 
     fn size(&self) -> usize {
         match self {
@@ -62,7 +62,13 @@ impl<P: Point> Index<P> for FilteredTestIndex<P> {
     {
         match self {
             FilteredTestIndex::Thesis(index) => index.search(query, k, options),
-            FilteredTestIndex::Vamana(index) => index.search(query, k, options),
+            FilteredTestIndex::Vamana(index) => {
+                let vamana_options = FilteredVamanaSearchOptions {
+                    ef: options.ef,
+                    labels: options.labels,
+                };
+                index.search(query, k, &vamana_options)
+            }
         }
     }
 }
@@ -129,9 +135,10 @@ pub fn evaluate_filtered(
         let mut index_spqs = Vec::new();
         for &(k, ef) in params {
             let (recall, spq) = evaluate_recall(eval_queries, ground_truth, k, &|qi, query, k| {
-                let options = FilteredVamanaSearchOptions {
+                let options = FilteredThesisIndexSearchOptions {
                     ef,
                     labels: &query_labels[qi],
+                    scan_limit: 0,
                 };
                 index
                     .search(query, k, &options)

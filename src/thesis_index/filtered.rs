@@ -1,15 +1,130 @@
+use crate::bitset::Bitset;
 use crate::labels::{LabelSet, find_medoids};
 use crate::thesis_index::{Builder, BuilderExt, ThesisIndexOptions};
 use crate::vamana::filtered::{FilteredVamanaBuilder, FilteredVamanaOptions};
 use crate::vamana::index::{FilteredVamana, FilteredVamanaSearchOptions};
 use hnsw_itu::{Distance, Index, IndexBuilder, IndexVis, Point};
+use min_max_heap::MinMaxHeap;
 use rayon::prelude::*;
 use roargraph::AdjListGraph;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::sync::RwLock;
+use std::sync::{Mutex, RwLock};
 use tracing::{info, warn};
 
-pub type FilteredThesisIndex<P> = FilteredVamana<P>;
+#[derive(Serialize, Deserialize)]
+pub struct FilteredThesisIndex<P> {
+    pub(crate) inner: FilteredVamana<P>,
+    /// For each label, a bitset of point indices that carry that label.
+    pub(crate) inverted_index: Vec<Bitset>,
+}
+
+pub struct FilteredThesisIndexSearchOptions<'a> {
+    pub ef: usize,
+    pub labels: &'a LabelSet,
+    /// Linear scan searches labels with <= scan_limit points.
+    /// 0 disables scanning.
+    pub scan_limit: usize,
+}
+
+impl std::fmt::Debug for FilteredThesisIndexSearchOptions<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FilteredThesisIndexSearchOptions")
+            .field("ef", &self.ef)
+            .field("scan_limit", &self.scan_limit)
+            .finish()
+    }
+}
+
+impl<P: Point> Index<P> for FilteredThesisIndex<P> {
+    type Options<'a> = FilteredThesisIndexSearchOptions<'a>;
+
+    fn size(&self) -> usize {
+        self.inner.size()
+    }
+
+    fn search(&'_ self, query: &P, k: usize, options: &Self::Options<'_>) -> Vec<Distance<'_, P>> {
+        let mut visited = HashSet::with_capacity(2048);
+        self.search_vis(query, k, options, &mut visited)
+    }
+}
+
+impl<P: Point> IndexVis<P> for FilteredThesisIndex<P> {
+    fn search_vis<'a>(
+        &'a self,
+        query: &P,
+        k: usize,
+        options: &Self::Options<'_>,
+        vis: &mut HashSet<Distance<'a, P>>,
+    ) -> Vec<Distance<'a, P>> {
+        let vamana_options = FilteredVamanaSearchOptions {
+            ef: options.ef,
+            labels: options.labels,
+        };
+
+        if options.scan_limit == 0 {
+            return self.inner.search_vis(query, k, &vamana_options, vis);
+        }
+
+        let mut scan_labels = LabelSet::new();
+
+        // Collect scannable labels
+        for label in options.labels.iter() {
+            let count = self.inverted_index.get(label).map_or(0, |b| b.count());
+            if count > 0 && count <= options.scan_limit {
+                scan_labels.set(label);
+            }
+        }
+
+        if scan_labels.is_empty() {
+            // All labels are above scan_limit
+            return self.inner.search_vis(query, k, &vamana_options, vis);
+        }
+
+        // Linear scan for the scannable labels
+        let nodes = self.inner.graph.nodes();
+        let mut results = MinMaxHeap::with_capacity(k + 1);
+        let mut seen = Bitset::new();
+
+        // Union all scannable posting lists so each point is visited once
+        let mut scan_points = LabelSet::new();
+        for label in scan_labels.iter() {
+            if let Some(points) = self.inverted_index.get(label) {
+                scan_points |= points;
+            }
+        }
+
+        for point_idx in scan_points.iter() {
+            let point = &nodes[point_idx];
+            let dist = Distance::new(point.distance(query), point_idx, point);
+            seen.set(point_idx);
+            results.push(dist);
+            if results.len() > k {
+                results.pop_max();
+            }
+        }
+
+        let search_labels = vamana_options.labels - scan_labels;
+
+        if search_labels.is_empty() {
+            // All query labels were scannable
+            return results.drain_asc().collect();
+        }
+
+        // Search for labels via graph
+        // We're searching for all query labels, even the ones we scanned.
+        let search_results = self.inner.search_vis(query, k, &vamana_options, vis);
+
+        // Merge scan and search results, skipping duplicates
+        for d in search_results {
+            if seen.set(d.key) {
+                results.push(d);
+            }
+        }
+
+        results.drain_asc().take(k).collect()
+    }
+}
 
 pub struct FilteredThesisIndexOptions {
     pub base_options: ThesisIndexOptions,
@@ -70,29 +185,54 @@ impl<P: Point + Send + Sync> Builder<P> for FilteredThesisIndexBuilder {
 
         if self.options.base_options.con {
             warn!("Connectivity enhancement is not implemented for filtered index");
-            //self.connectivity_enhancement(&data, &mut projected_graph, entry);
         }
 
         let (_, adj_lists) = projected_graph.consume();
 
-        info!("FilteredThesisIndex construction complete");
+        info!("Building inverted index...");
+        let num_labels = self
+            .options
+            .labels
+            .iter()
+            .flat_map(|ls| ls.iter())
+            .max()
+            .map_or(0, |m| m + 1);
+        let inverted_index: Vec<Mutex<Bitset>> =
+            (0..num_labels).map(|_| Mutex::new(Bitset::new())).collect();
+        self.options
+            .labels
+            .par_iter()
+            .enumerate()
+            .for_each(|(point_idx, label_set)| {
+                for label in label_set.iter() {
+                    inverted_index[label].lock().unwrap().set(point_idx);
+                }
+            });
+        let inverted_index: Vec<Bitset> = inverted_index
+            .into_iter()
+            .map(|m| m.into_inner().unwrap())
+            .collect();
+
         FilteredThesisIndex {
-            start_nodes,
-            labels: self.options.labels,
-            graph: AdjListGraph {
-                nodes: data,
-                adj_lists,
+            inner: FilteredVamana {
+                start_nodes,
+                labels: self.options.labels,
+                graph: AdjListGraph {
+                    nodes: data,
+                    adj_lists,
+                },
             },
+            inverted_index,
         }
     }
 
     fn build_query_graph<'a>(&self, data: &[&'a P]) -> Self::QueryGraph<'a> {
         info!("Constructing Query graph...");
         let mut graph_builder = FilteredVamanaBuilder::new(FilteredVamanaOptions {
-            alpha: 1.2,
+            alpha: 1.4,
             l: 90,
             r: 96,
-            threshold: 1000,
+            threshold: data.len() / 100,
             labels: self.options.query_labels.clone(),
         });
         graph_builder.extend(data.to_vec());

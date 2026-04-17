@@ -29,7 +29,6 @@ impl std::fmt::Debug for FilteredVamanaOptions {
             .field("l", &self.l)
             .field("r", &self.r)
             .field("threshold", &self.threshold)
-            .field("labels", &format_args!("<{} items>", self.labels.len()))
             .finish()
     }
 }

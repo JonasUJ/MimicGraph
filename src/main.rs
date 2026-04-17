@@ -41,9 +41,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //let path = Path::new("../datasets/data.exclude/yi-128-ip.hdf5");
     //let path = Path::new("../datasets/data.exclude/imagenet-align-640-normalized.hdf5");
     //let path = Path::new("../datasets/data.exclude/imagenet-clip-512-normalized.hdf5");
-    //let path = Path::new("../datasets/data.exclude/LAION1M.hdf5");
+    let path = Path::new("../datasets/data.exclude/LAION1M.hdf5");
     //let path = Path::new("../datasets/data.exclude/yfcc.hdf5");
-    let path = Path::new("../datasets/data.exclude/tripclick.hdf5");
+    //let path = Path::new("../datasets/data.exclude/tripclick.hdf5");
     //let path = Path::new("../datasets/data.exclude/arxiv.hdf5");
     //let path = Path::new("../datasets/data.exclude/YFCC-10M.hdf5");
     let outdir = "data.exclude";
@@ -57,7 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //let num_corpus = 10_000_000.min(dataset.size());
     info!("Corpus size: {} of {}", num_corpus, dataset.size());
     let corpus = dataset.into_iter().take(num_corpus).collect::<Vec<_>>();
-    let build_count = corpus.len() / 20;
+    let build_count = corpus.len() / 10;
     let eval_count = 10_000;
     let queries = BufferedDataset::<'_, Row<f32>, _>::open(path, "query_points")
         .or_else(|_| BufferedDataset::<'_, Row<f32>, _>::open(path, "learn"))?
@@ -170,7 +170,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             path.file_name().unwrap().to_str().unwrap()
         );
         let mut file = File::create(outfile)?;
-        for p in graph.graph.adj_lists().iter() {
+        for p in graph.inner.graph.adj_lists().iter() {
             writeln!(file, "{}", p.len())?;
         }
 
