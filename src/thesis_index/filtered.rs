@@ -213,6 +213,7 @@ impl<P: Point + Send + Sync> Builder<P> for FilteredThesisIndexBuilder {
             .map(|m| m.into_inner().unwrap())
             .collect();
 
+        info!("FilteredThesisIndex construction complete");
         FilteredThesisIndex {
             inner: FilteredVamana {
                 start_nodes,

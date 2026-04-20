@@ -1,12 +1,11 @@
 use crate::WithMetadata;
 use crate::labels::LabelSet;
-use crate::point::Row;
 use crate::thesis_index::filtered::{FilteredThesisIndex, FilteredThesisIndexSearchOptions};
 use crate::thesis_index::plain::ThesisIndex;
 use crate::vamana::index::{FilteredVamana, FilteredVamanaSearchOptions};
 use hnsw_itu::{Distance, HNSW, Index, MinK, Point};
 use rayon::prelude::*;
-use roargraph::RoarGraph;
+use roargraph::{RoarGraph, Row};
 use std::collections::HashSet;
 use std::path::Path;
 use std::time::{Duration, Instant};

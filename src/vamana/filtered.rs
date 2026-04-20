@@ -4,11 +4,10 @@ use crate::labels::{
 use crate::vamana::index::FilteredVamana;
 use hnsw_itu::{Distance, Index, IndexBuilder, MinK, Point};
 use min_max_heap::MinMaxHeap;
-use rand::seq::{IndexedRandom, SliceRandom};
+use rand::seq::IndexedRandom;
 use rayon::prelude::*;
 use std::collections::HashSet;
 use std::sync::RwLock;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use tracing::info;
 
 pub struct FilteredVamanaOptions {
@@ -59,10 +58,6 @@ impl<P: Point + Send + Sync> IndexBuilder<P> for FilteredVamanaBuilder<P> {
     fn build(mut self) -> Self::Index {
         let n = self.index.size();
         self.index.start_nodes = find_medoids(&self.index.labels, self.options.threshold);
-        info!(
-            "Building graph for {n} points (threads: {})...",
-            rayon::current_num_threads()
-        );
 
         let nodes = &self.index.graph.nodes;
         let labels = &self.index.labels;
@@ -94,19 +89,11 @@ impl<P: Point + Send + Sync> IndexBuilder<P> for FilteredVamanaBuilder<P> {
             }
         }
 
-        let progress = AtomicUsize::new(0);
-        let log_interval = (n / 5).max(1);
-
-        let mut order: Vec<usize> = (0..n).collect();
-        order.shuffle(&mut rand::rng());
-
-        order.into_par_iter().for_each(|i| {
-            let done = progress.fetch_add(1, Ordering::Relaxed);
-            if done.is_multiple_of(log_interval) {
-                info!("{done}/{n} ({:.1}%)", done as f64 * 100.0 / n as f64);
-            }
-
-            let point = &nodes[i];
+        info!(
+            "Building Vamana graph for {n} points (threads: {})...",
+            rayon::current_num_threads()
+        );
+        nodes.into_par_iter().enumerate().for_each(|(i, point)| {
             let point_labels = &labels[i];
 
             let search_start: Vec<usize> = point_labels
@@ -192,6 +179,8 @@ impl<P: Point + Send + Sync> IndexBuilder<P> for FilteredVamanaBuilder<P> {
             .into_iter()
             .map(|lock| lock.into_inner().unwrap())
             .collect();
+
+        info!("Vamana graph construction finished");
 
         self.index
     }

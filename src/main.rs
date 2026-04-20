@@ -3,14 +3,13 @@ use crate::eval::{
     evaluate_filtered,
 };
 use crate::labels::LabelSet;
-use crate::point::Row;
 use crate::thesis_index::filtered::{FilteredThesisIndexBuilder, FilteredThesisIndexOptions};
 use crate::thesis_index::plain::ThesisIndexBuilder;
 use crate::thesis_index::{Builder, ThesisIndexOptions};
 use crate::vamana::filtered::{FilteredVamanaBuilder, FilteredVamanaOptions};
 use bincode::{deserialize_from, serialize_into};
 use hnsw_itu::{HNSWBuilder, IndexBuilder, NSWOptions};
-use roargraph::{BufferedDataset, H5File, RoarGraphOptions};
+use roargraph::{BufferedDataset, H5File, RoarGraphOptions, Row};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use sprs::CsMat;
@@ -24,12 +23,11 @@ use tracing_subscriber::fmt;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
+pub mod bitset;
 pub mod eval;
 pub mod labels;
-pub mod point;
 pub mod thesis_index;
 pub mod vamana;
-pub mod bitset;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::registry().with(fmt::layer()).init();
