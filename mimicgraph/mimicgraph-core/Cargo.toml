@@ -1,7 +1,17 @@
 [package]
 name = "mimicgraph-core"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+hnsw-itu.workspace = true
+roargraph.workspace = true
+
+min-max-heap.workspace = true
+tracing.workspace = true
+rayon.workspace = true
+serde.workspace = true
+rand.workspace = true
 
 [dev-dependencies]
-serde_json = "1"
+serde_json = "1.0.149"

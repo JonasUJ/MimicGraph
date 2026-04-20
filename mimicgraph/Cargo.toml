@@ -1,15 +1,18 @@
-[package]
-name = "mimicgraph"
-version = "0.1.0"
-edition = "2024"
-
 [workspace]
 members = [
     "mimicgraph-core",
     "mimicgraph-cli",
 ]
 
-[dependencies]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+
+[workspace.dependencies]
+mimicgraph-core = { path = "mimicgraph-core" }
+
 hnsw-itu = { path = "../hnsw-itu", features = ["serde"] }
 roargraph = { path = "../roargraph-rs" }
 
@@ -21,10 +24,6 @@ serde = { version = "1.0.228", features = ["derive"] }
 bincode = "1.3.3"
 rand = { version = "0.10.0", features = ["thread_rng"] }
 sprs = "0.11.4"
-
-[[bin]]
-name = "mimicgraph"
-path = "mimicgraph-core/src/main.rs"
 
 [profile.release]
 debug = "full"

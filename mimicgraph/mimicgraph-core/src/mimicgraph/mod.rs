@@ -12,21 +12,21 @@ pub mod plain;
 #[derive(Debug, Clone)]
 pub struct MimicGraphOptions {
     /// Out-degree bound
-    pub(crate) m: usize,
+    pub m: usize,
     /// Candidate pool size
-    pub(crate) l: usize,
+    pub l: usize,
     /// KNN pruned set size
-    pub(crate) p: usize,
+    pub p: usize,
     /// Bipartite reverse edges
-    pub(crate) e: usize,
+    pub e: usize,
     /// Query graph k
-    pub(crate) qk: usize,
+    pub qk: usize,
     /// Query graph ef
-    pub(crate) qef: usize,
+    pub qef: usize,
     /// Connectivity enhancement
-    pub(crate) con: bool,
+    pub con: bool,
     /// Use visited nodes as candidates
-    pub(crate) vis: bool,
+    pub vis: bool,
 }
 
 pub trait Builder<P: Point + Send + Sync> {

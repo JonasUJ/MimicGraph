@@ -1,4 +1,21 @@
 [package]
 name = "mimicgraph-cli"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+mimicgraph-core.workspace = true
+
+hnsw-itu.workspace = true
+roargraph.workspace = true
+
+tracing.workspace = true
+tracing-subscriber.workspace = true
+rayon.workspace = true
+serde.workspace = true
+bincode.workspace = true
+sprs.workspace = true
+
+[[bin]]
+name = "mimicgraph"
+path = "src/main.rs"

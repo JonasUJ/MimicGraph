@@ -6,9 +6,9 @@ use std::collections::{HashMap, HashSet};
 
 #[derive(Serialize, Deserialize)]
 pub struct FilteredVamana<P> {
-    pub(crate) start_nodes: HashMap<usize, usize>,
-    pub(crate) graph: AdjListGraph<P>,
-    pub(crate) labels: Vec<LabelSet>,
+    pub start_nodes: HashMap<usize, usize>,
+    pub graph: AdjListGraph<P>,
+    pub labels: Vec<LabelSet>,
 }
 
 impl<P> FilteredVamana<P> {

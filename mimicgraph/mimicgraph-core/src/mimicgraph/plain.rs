@@ -11,7 +11,7 @@ use tracing::info;
 #[derive(Serialize, Deserialize)]
 pub struct MimicGraph<T> {
     pub entry: usize,
-    pub(crate) graph: AdjListGraph<T>,
+    pub graph: AdjListGraph<T>,
 }
 
 impl<P: Point> Index<P> for MimicGraph<P> {

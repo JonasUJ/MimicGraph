@@ -1,9 +1,9 @@
 use crate::WithMetadata;
-use crate::labels::LabelSet;
-use crate::mimicgraph::filtered::{FilteredMimicGraph, FilteredMimicGraphSearchOptions};
-use crate::mimicgraph::plain::MimicGraph;
-use crate::vamana::index::{FilteredVamana, FilteredVamanaSearchOptions};
 use hnsw_itu::{Distance, HNSW, Index, MinK, Point};
+use mimicgraph_core::labels::LabelSet;
+use mimicgraph_core::mimicgraph::filtered::{FilteredMimicGraph, FilteredMimicGraphSearchOptions};
+use mimicgraph_core::mimicgraph::plain::MimicGraph;
+use mimicgraph_core::vamana::index::{FilteredVamana, FilteredVamanaSearchOptions};
 use rayon::prelude::*;
 use roargraph::{RoarGraph, Row};
 use std::collections::HashSet;
@@ -292,7 +292,7 @@ pub fn compute_filtered_ground_truth(
                     .enumerate()
                     .filter_map(|(di, d)| {
                         let d_labels = &labels[di];
-                        if crate::labels::labels_intersect(d_labels, q_labels) {
+                        if mimicgraph_core::labels::labels_intersect(d_labels, q_labels) {
                             Some(Distance::new(d.distance(q), di, d))
                         } else {
                             None

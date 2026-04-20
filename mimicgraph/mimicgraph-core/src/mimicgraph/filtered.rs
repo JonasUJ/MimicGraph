@@ -14,9 +14,9 @@ use tracing::{info, warn};
 
 #[derive(Serialize, Deserialize)]
 pub struct FilteredMimicGraph<P> {
-    pub(crate) inner: FilteredVamana<P>,
+    pub inner: FilteredVamana<P>,
     /// For each label, a bitset of point indices that carry that label.
-    pub(crate) inverted_index: Vec<Bitset>,
+    pub inverted_index: Vec<Bitset>,
 }
 
 pub struct FilteredMimicGraphSearchOptions<'a> {
