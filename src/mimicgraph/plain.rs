@@ -1,4 +1,4 @@
-use crate::thesis_index::{Builder, BuilderExt, ThesisIndexOptions};
+use crate::mimicgraph::{Builder, BuilderExt, MimicGraphOptions};
 use hnsw_itu::{Distance, Index, IndexBuilder, IndexVis, NSW, Point};
 use hnsw_itu::{NSWBuilder, NSWOptions};
 use rayon::prelude::*;
@@ -9,12 +9,12 @@ use std::sync::RwLock;
 use tracing::info;
 
 #[derive(Serialize, Deserialize)]
-pub struct ThesisIndex<T> {
+pub struct MimicGraph<T> {
     pub entry: usize,
     pub(crate) graph: AdjListGraph<T>,
 }
 
-impl<P: Point> Index<P> for ThesisIndex<P> {
+impl<P: Point> Index<P> for MimicGraph<P> {
     type Options<'a> = usize;
 
     fn size(&self) -> usize {
@@ -28,24 +28,24 @@ impl<P: Point> Index<P> for ThesisIndex<P> {
     }
 }
 
-pub struct ThesisIndexBuilder {
-    options: ThesisIndexOptions,
+pub struct MimicGraphBuilder {
+    options: MimicGraphOptions,
 }
 
-impl ThesisIndexBuilder {
-    pub fn new(options: ThesisIndexOptions) -> Self {
+impl MimicGraphBuilder {
+    pub fn new(options: MimicGraphOptions) -> Self {
         Self { options }
     }
 }
 
-impl<P: Point + Send + Sync> Builder<P> for ThesisIndexBuilder {
-    type Index = ThesisIndex<P>;
+impl<P: Point + Send + Sync> Builder<P> for MimicGraphBuilder {
+    type Index = MimicGraph<P>;
     type QueryGraph<'a>
         = NSW<&'a P>
     where
         P: 'a;
 
-    fn options(&self) -> &ThesisIndexOptions {
+    fn options(&self) -> &MimicGraphOptions {
         &self.options
     }
 
@@ -81,8 +81,8 @@ impl<P: Point + Send + Sync> Builder<P> for ThesisIndexBuilder {
 
         let (_, adj_lists) = projected_graph.consume();
 
-        info!("ThesisIndex construction complete");
-        ThesisIndex {
+        info!("MimicGraph construction complete");
+        MimicGraph {
             entry,
             graph: AdjListGraph {
                 nodes: data,

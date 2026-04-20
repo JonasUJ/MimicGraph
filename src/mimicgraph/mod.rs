@@ -10,7 +10,7 @@ pub mod filtered;
 pub mod plain;
 
 #[derive(Debug, Clone)]
-pub struct ThesisIndexOptions {
+pub struct MimicGraphOptions {
     /// Out-degree bound
     pub(crate) m: usize,
     /// Candidate pool size
@@ -35,7 +35,7 @@ pub trait Builder<P: Point + Send + Sync> {
     where
         P: 'a;
 
-    fn options(&self) -> &ThesisIndexOptions;
+    fn options(&self) -> &MimicGraphOptions;
 
     fn build(self, queries: &[P], data: Vec<P>) -> Self::Index;
 

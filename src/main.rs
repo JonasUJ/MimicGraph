@@ -3,9 +3,9 @@ use crate::eval::{
     evaluate_filtered,
 };
 use crate::labels::LabelSet;
-use crate::thesis_index::filtered::{FilteredThesisIndexBuilder, FilteredThesisIndexOptions};
-use crate::thesis_index::plain::ThesisIndexBuilder;
-use crate::thesis_index::{Builder, ThesisIndexOptions};
+use crate::mimicgraph::filtered::{FilteredMimicGraphBuilder, FilteredMimicGraphOptions};
+use crate::mimicgraph::plain::MimicGraphBuilder;
+use crate::mimicgraph::{Builder, MimicGraphOptions};
 use crate::vamana::filtered::{FilteredVamanaBuilder, FilteredVamanaOptions};
 use bincode::{deserialize_from, serialize_into};
 use hnsw_itu::{HNSWBuilder, IndexBuilder, NSWOptions};
@@ -26,7 +26,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 pub mod bitset;
 pub mod eval;
 pub mod labels;
-pub mod thesis_index;
+pub mod mimicgraph;
 pub mod vamana;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -83,7 +83,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|m| csmat_to_map(m, queries.len()));
     let is_filtered = labels.is_ok();
 
-    let options = ThesisIndexOptions {
+    let options = MimicGraphOptions {
         m: 32,
         l: 500,
         p: 100,
@@ -136,7 +136,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             eval_query_labels,
         );
 
-        let options = FilteredThesisIndexOptions {
+        let options = FilteredMimicGraphOptions {
             base_options: options,
             threshold: 1000,
             labels: labels.clone(),
@@ -151,7 +151,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let graph_file = Path::new(graph_file_name.as_str());
         let graph_metadata = create_if_not_exists(graph_file, || {
             info!("Building index...");
-            FilteredThesisIndexBuilder::new(options).build(
+            FilteredMimicGraphBuilder::new(options).build(
                 &queries
                     .iter()
                     .take(build_count)
@@ -164,7 +164,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let graph = graph_metadata.value;
 
         let outfile = format!(
-            "thesisindex-{}.txt",
+            "mimicgraph-{}.txt",
             path.file_name().unwrap().to_str().unwrap()
         );
         let mut file = File::create(outfile)?;
@@ -173,8 +173,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         indices.push((
-            "F-Thesis",
-            FilteredTestIndex::Thesis(graph),
+            "F-MimicGraph",
+            FilteredTestIndex::MimicGraph(graph),
             graph_metadata.build_time,
         ));
 
@@ -243,7 +243,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let graph_file = Path::new(graph_file_name.as_str());
         let graph_metadata = create_if_not_exists(graph_file, || {
             info!("Building index...");
-            ThesisIndexBuilder::new(options).build(
+            MimicGraphBuilder::new(options).build(
                 &queries
                     .iter()
                     .take(build_count)
@@ -256,7 +256,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let graph = graph_metadata.value;
 
         let outfile = format!(
-            "thesisindex-{}.txt",
+            "mimicgraph-{}.txt",
             path.file_name().unwrap().to_str().unwrap()
         );
         let mut file = File::create(outfile)?;
@@ -265,8 +265,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         indices.push((
-            "ThesisIndex",
-            TestIndex::Thesis(graph),
+            "MimicGraph",
+            TestIndex::MimicGraph(graph),
             graph_metadata.build_time,
         ));
 

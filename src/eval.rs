@@ -1,7 +1,7 @@
 use crate::WithMetadata;
 use crate::labels::LabelSet;
-use crate::thesis_index::filtered::{FilteredThesisIndex, FilteredThesisIndexSearchOptions};
-use crate::thesis_index::plain::ThesisIndex;
+use crate::mimicgraph::filtered::{FilteredMimicGraph, FilteredMimicGraphSearchOptions};
+use crate::mimicgraph::plain::MimicGraph;
 use crate::vamana::index::{FilteredVamana, FilteredVamanaSearchOptions};
 use hnsw_itu::{Distance, HNSW, Index, MinK, Point};
 use rayon::prelude::*;
@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use tracing::info;
 
 pub enum TestIndex<P> {
-    Thesis(ThesisIndex<P>),
+    MimicGraph(MimicGraph<P>),
     Hnsw(HNSW<P>),
     RoarGraph(RoarGraph<P>),
 }
@@ -22,7 +22,7 @@ impl<P: Point> Index<P> for TestIndex<P> {
 
     fn size(&self) -> usize {
         match self {
-            TestIndex::Thesis(index) => index.size(),
+            TestIndex::MimicGraph(index) => index.size(),
             TestIndex::Hnsw(index) => index.size(),
             TestIndex::RoarGraph(index) => index.size(),
         }
@@ -33,7 +33,7 @@ impl<P: Point> Index<P> for TestIndex<P> {
         P: Point,
     {
         match self {
-            TestIndex::Thesis(index) => index.search(query, k, options),
+            TestIndex::MimicGraph(index) => index.search(query, k, options),
             TestIndex::Hnsw(index) => index.search(query, k, options),
             TestIndex::RoarGraph(index) => index.search(query, k, options),
         }
@@ -41,16 +41,16 @@ impl<P: Point> Index<P> for TestIndex<P> {
 }
 
 pub enum FilteredTestIndex<P> {
-    Thesis(FilteredThesisIndex<P>),
+    MimicGraph(FilteredMimicGraph<P>),
     Vamana(FilteredVamana<P>),
 }
 
 impl<P: Point> Index<P> for FilteredTestIndex<P> {
-    type Options<'a> = FilteredThesisIndexSearchOptions<'a>;
+    type Options<'a> = FilteredMimicGraphSearchOptions<'a>;
 
     fn size(&self) -> usize {
         match self {
-            FilteredTestIndex::Thesis(index) => index.size(),
+            FilteredTestIndex::MimicGraph(index) => index.size(),
             FilteredTestIndex::Vamana(index) => index.size(),
         }
     }
@@ -60,7 +60,7 @@ impl<P: Point> Index<P> for FilteredTestIndex<P> {
         P: Point,
     {
         match self {
-            FilteredTestIndex::Thesis(index) => index.search(query, k, options),
+            FilteredTestIndex::MimicGraph(index) => index.search(query, k, options),
             FilteredTestIndex::Vamana(index) => {
                 let vamana_options = FilteredVamanaSearchOptions {
                     ef: options.ef,
@@ -134,7 +134,7 @@ pub fn evaluate_filtered(
         let mut index_spqs = Vec::new();
         for &(k, ef) in params {
             let (recall, spq) = evaluate_recall(eval_queries, ground_truth, k, &|qi, query, k| {
-                let options = FilteredThesisIndexSearchOptions {
+                let options = FilteredMimicGraphSearchOptions {
                     ef,
                     labels: &query_labels[qi],
                     scan_limit: 0,

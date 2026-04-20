@@ -1,6 +1,6 @@
 use crate::bitset::Bitset;
 use crate::labels::{LabelSet, find_medoids};
-use crate::thesis_index::{Builder, BuilderExt, ThesisIndexOptions};
+use crate::mimicgraph::{Builder, BuilderExt, MimicGraphOptions};
 use crate::vamana::filtered::{FilteredVamanaBuilder, FilteredVamanaOptions};
 use crate::vamana::index::{FilteredVamana, FilteredVamanaSearchOptions};
 use hnsw_itu::{Distance, Index, IndexBuilder, IndexVis, Point};
@@ -13,13 +13,13 @@ use std::sync::{Mutex, RwLock};
 use tracing::{info, warn};
 
 #[derive(Serialize, Deserialize)]
-pub struct FilteredThesisIndex<P> {
+pub struct FilteredMimicGraph<P> {
     pub(crate) inner: FilteredVamana<P>,
     /// For each label, a bitset of point indices that carry that label.
     pub(crate) inverted_index: Vec<Bitset>,
 }
 
-pub struct FilteredThesisIndexSearchOptions<'a> {
+pub struct FilteredMimicGraphSearchOptions<'a> {
     pub ef: usize,
     pub labels: &'a LabelSet,
     /// Linear scan searches labels with <= scan_limit points.
@@ -27,17 +27,17 @@ pub struct FilteredThesisIndexSearchOptions<'a> {
     pub scan_limit: usize,
 }
 
-impl std::fmt::Debug for FilteredThesisIndexSearchOptions<'_> {
+impl std::fmt::Debug for FilteredMimicGraphSearchOptions<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("FilteredThesisIndexSearchOptions")
+        f.debug_struct("FilteredMimicGraphSearchOptions")
             .field("ef", &self.ef)
             .field("scan_limit", &self.scan_limit)
             .finish()
     }
 }
 
-impl<P: Point> Index<P> for FilteredThesisIndex<P> {
-    type Options<'a> = FilteredThesisIndexSearchOptions<'a>;
+impl<P: Point> Index<P> for FilteredMimicGraph<P> {
+    type Options<'a> = FilteredMimicGraphSearchOptions<'a>;
 
     fn size(&self) -> usize {
         self.inner.size()
@@ -49,7 +49,7 @@ impl<P: Point> Index<P> for FilteredThesisIndex<P> {
     }
 }
 
-impl<P: Point> IndexVis<P> for FilteredThesisIndex<P> {
+impl<P: Point> IndexVis<P> for FilteredMimicGraph<P> {
     fn search_vis<'a>(
         &'a self,
         query: &P,
@@ -126,16 +126,16 @@ impl<P: Point> IndexVis<P> for FilteredThesisIndex<P> {
     }
 }
 
-pub struct FilteredThesisIndexOptions {
-    pub base_options: ThesisIndexOptions,
+pub struct FilteredMimicGraphOptions {
+    pub base_options: MimicGraphOptions,
     pub threshold: usize,
     pub labels: Vec<LabelSet>,
     pub query_labels: Vec<LabelSet>,
 }
 
-impl std::fmt::Debug for FilteredThesisIndexOptions {
+impl std::fmt::Debug for FilteredMimicGraphOptions {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("FilteredThesisIndexOptions")
+        f.debug_struct("FilteredMimicGraphOptions")
             .field("base_options", &self.base_options)
             .field("threshold", &self.threshold)
             .field("labels", &format_args!("<{} items>", self.labels.len()))
@@ -147,24 +147,24 @@ impl std::fmt::Debug for FilteredThesisIndexOptions {
     }
 }
 
-pub struct FilteredThesisIndexBuilder {
-    options: FilteredThesisIndexOptions,
+pub struct FilteredMimicGraphBuilder {
+    options: FilteredMimicGraphOptions,
 }
 
-impl FilteredThesisIndexBuilder {
-    pub fn new(options: FilteredThesisIndexOptions) -> Self {
+impl FilteredMimicGraphBuilder {
+    pub fn new(options: FilteredMimicGraphOptions) -> Self {
         Self { options }
     }
 }
 
-impl<P: Point + Send + Sync> Builder<P> for FilteredThesisIndexBuilder {
-    type Index = FilteredThesisIndex<P>;
+impl<P: Point + Send + Sync> Builder<P> for FilteredMimicGraphBuilder {
+    type Index = FilteredMimicGraph<P>;
     type QueryGraph<'a>
         = FilteredVamana<&'a P>
     where
         P: 'a;
 
-    fn options(&self) -> &ThesisIndexOptions {
+    fn options(&self) -> &MimicGraphOptions {
         &self.options.base_options
     }
 
@@ -213,8 +213,8 @@ impl<P: Point + Send + Sync> Builder<P> for FilteredThesisIndexBuilder {
             .map(|m| m.into_inner().unwrap())
             .collect();
 
-        info!("FilteredThesisIndex construction complete");
-        FilteredThesisIndex {
+        info!("FilteredMimicGraph construction complete");
+        FilteredMimicGraph {
             inner: FilteredVamana {
                 start_nodes,
                 labels: self.options.labels,
