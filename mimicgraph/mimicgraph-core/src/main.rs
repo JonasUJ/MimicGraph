@@ -39,7 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //let path = Path::new("../datasets/data.exclude/yi-128-ip.hdf5");
     //let path = Path::new("../datasets/data.exclude/imagenet-align-640-normalized.hdf5");
     //let path = Path::new("../datasets/data.exclude/imagenet-clip-512-normalized.hdf5");
-    let path = Path::new("../datasets/data.exclude/LAION1M.hdf5");
+    let path = Path::new("../../../datasets/data.exclude/LAION1M.hdf5");
     //let path = Path::new("../datasets/data.exclude/yfcc.hdf5");
     //let path = Path::new("../datasets/data.exclude/tripclick.hdf5");
     //let path = Path::new("../datasets/data.exclude/arxiv.hdf5");

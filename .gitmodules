@@ -1,0 +1,8 @@
+[submodule "hnsw-itu"]
+	path = hnsw-itu
+	url = https://github.com/JonasUJ/hnsw-itu.git
+	branch = f32-dist
+[submodule "roargraph-rs"]
+	path = roargraph-rs
+	url = https://github.com/JonasUJ/roargraph-rs.git
+	branch = alternate-dep
