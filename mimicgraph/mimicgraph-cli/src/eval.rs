@@ -182,41 +182,6 @@ fn print_evaluation_results(
         .map(|(name, vals)| (*name, vals.iter().map(|s| 1.0 / s.as_secs_f64()).collect()))
         .collect();
     print_rows("QPS", &qps, build_times, |r| format!("{:>15.1}", r));
-
-    let recall_per_bt: Vec<(&str, Vec<f64>)> = recalls
-        .iter()
-        .map(|(name, vals)| {
-            let bt = build_times
-                .iter()
-                .find(|(n, _)| n == name)
-                .unwrap()
-                .1
-                .as_secs_f64();
-            (*name, vals.iter().map(|r| *r as f64 / bt).collect())
-        })
-        .collect();
-    print_rows("Recall/BT", &recall_per_bt, build_times, |r| {
-        format!("{:>15.6}", r)
-    });
-
-    let qps_per_bt: Vec<(&str, Vec<f64>)> = spqs
-        .iter()
-        .map(|(name, vals)| {
-            let bt = build_times
-                .iter()
-                .find(|(n, _)| n == name)
-                .unwrap()
-                .1
-                .as_secs_f64();
-            (
-                *name,
-                vals.iter().map(|s| 1.0 / (s.as_secs_f64() * bt)).collect(),
-            )
-        })
-        .collect();
-    print_rows("QPS/BT", &qps_per_bt, build_times, |r| {
-        format!("{:>15.1}", r)
-    });
 }
 
 fn fmt_duration(d: &Duration) -> String {
@@ -253,7 +218,7 @@ pub fn compute_ground_truth(
     queries: &[Row<f32>],
     corpus: &[Row<f32>],
 ) -> WithMetadata<Vec<Vec<(usize, f32)>>> {
-    crate::create_if_not_exists(Path::new(filename), || {
+    crate::artifacts::load_or_create(Path::new(filename), || {
         info!("Computing ground truth nearest neighbors...");
         queries
             .par_iter()
@@ -280,7 +245,7 @@ pub fn compute_filtered_ground_truth(
     labels: &[LabelSet],
     query_labels: &[LabelSet],
 ) -> WithMetadata<Vec<Vec<(usize, f32)>>> {
-    crate::create_if_not_exists(Path::new(filename), || {
+    crate::artifacts::load_or_create(Path::new(filename), || {
         info!("Computing filtered ground truth nearest neighbors...");
         queries
             .par_iter()

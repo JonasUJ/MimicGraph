@@ -97,7 +97,6 @@ impl<P: Point + Send + Sync> Builder<P> for MimicGraphBuilder {
             ef_construction: 500,
             connections: 32,
             max_connections: 96,
-            size: data.len(),
         });
         graph_builder.extend_parallel(data.to_vec());
 
