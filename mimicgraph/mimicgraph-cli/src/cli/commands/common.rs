@@ -67,7 +67,7 @@ impl<'a> BuildContext<'a> {
         mg_options_str: &str,
         hnsw_options_str: &str,
         rg_options_str: &str,
-    ) -> Result<Vec<(&'static str, TestIndex<Row<f32>>, Duration)>> {
+    ) -> Result<Vec<(&'static str, String, TestIndex<Row<f32>>, Duration)>> {
         let mut indices = Vec::new();
 
         if self.index_config.build_mimicgraph {
@@ -96,6 +96,7 @@ impl<'a> BuildContext<'a> {
 
             indices.push((
                 "MimicGraph",
+                mg_options_str.to_string(),
                 TestIndex::MimicGraph(graph_meta.value),
                 graph_meta.build_time,
             ));
@@ -123,6 +124,7 @@ impl<'a> BuildContext<'a> {
 
             indices.push((
                 "HNSW",
+                hnsw_options_str.to_string(),
                 TestIndex::Hnsw(hnsw_meta.value),
                 hnsw_meta.build_time,
             ));
@@ -166,6 +168,7 @@ impl<'a> BuildContext<'a> {
 
             indices.push((
                 "RoarGraph",
+                rg_options_str.to_string(),
                 TestIndex::RoarGraph(rg_meta.value),
                 rg_meta.build_time + build_gt.build_time,
             ));
@@ -180,7 +183,7 @@ impl<'a> BuildContext<'a> {
         query_labels: &[LabelSet],
         filtered_mg_options_str: &str,
         vamana_options_str: &str,
-    ) -> Result<Vec<(&'static str, FilteredTestIndex<Row<f32>>, Duration)>> {
+    ) -> Result<Vec<(&'static str, String, FilteredTestIndex<Row<f32>>, Duration)>> {
         let mut indices = Vec::new();
 
         if self.index_config.build_filtered_mimicgraph {
@@ -216,6 +219,7 @@ impl<'a> BuildContext<'a> {
 
             indices.push((
                 "F-MimicGraph",
+                filtered_mg_options_str.to_string(),
                 FilteredTestIndex::MimicGraph(graph_meta.value),
                 graph_meta.build_time,
             ));
@@ -244,6 +248,7 @@ impl<'a> BuildContext<'a> {
 
             indices.push((
                 "F-Vamana",
+                vamana_options_str.to_string(),
                 FilteredTestIndex::Vamana(vamana_meta.value),
                 vamana_meta.build_time,
             ));

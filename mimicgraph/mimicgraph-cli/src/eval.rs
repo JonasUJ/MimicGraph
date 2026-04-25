@@ -1,4 +1,5 @@
 use crate::WithMetadata;
+use crate::cli::OutputFormat;
 use hnsw_itu::{Distance, HNSW, Index, Point};
 use mimicgraph_core::labels::LabelSet;
 use mimicgraph_core::mimicgraph::filtered::{FilteredMimicGraph, FilteredMimicGraphSearchOptions};
@@ -73,10 +74,11 @@ impl<P: Point> Index<P> for FilteredTestIndex<P> {
 }
 
 pub fn evaluate(
-    indices: Vec<(&str, TestIndex<Row<f32>>, Duration)>,
+    indices: Vec<(&str, String, TestIndex<Row<f32>>, Duration)>,
     params: &[(usize, usize)],
     eval_queries: &[Row<f32>],
     ground_truth: &[Vec<(usize, f32)>],
+    format: OutputFormat,
 ) {
     info!(
         "Evaluating recall (eval queries: {}, threads: {})...",
@@ -87,7 +89,8 @@ pub fn evaluate(
     let mut recalls = Vec::new();
     let mut spqs = Vec::new();
     let mut build_times = Vec::new();
-    for (name, index, build_time) in indices {
+    let mut options_strs = Vec::new();
+    for (name, options, index, build_time) in indices {
         let mut index_recalls = Vec::new();
         let mut index_spqs = Vec::new();
         for &(k, ef) in params {
@@ -104,21 +107,30 @@ pub fn evaluate(
         recalls.push((name, index_recalls));
         spqs.push((name, index_spqs));
         build_times.push((name, build_time));
+        options_strs.push((name, options));
     }
 
     let header: Vec<String> = params
         .iter()
         .map(|(k, ef)| format!("k={k},ef={ef}"))
         .collect();
-    print_evaluation_results(&header, &recalls, &spqs, &build_times);
+    print_evaluation_results(
+        &header,
+        &recalls,
+        &spqs,
+        &build_times,
+        &options_strs,
+        format,
+    );
 }
 
 pub fn evaluate_filtered(
-    indices: Vec<(&str, FilteredTestIndex<Row<f32>>, Duration)>,
+    indices: Vec<(&str, String, FilteredTestIndex<Row<f32>>, Duration)>,
     params: &[(usize, usize)],
     eval_queries: &[Row<f32>],
     ground_truth: &[Vec<(usize, f32)>],
     query_labels: &[LabelSet],
+    format: OutputFormat,
 ) {
     info!(
         "Evaluating filtered recall (eval queries: {}, threads: {})...",
@@ -129,7 +141,8 @@ pub fn evaluate_filtered(
     let mut recalls = Vec::new();
     let mut spqs = Vec::new();
     let mut build_times = Vec::new();
-    for (name, index, build_time) in indices {
+    let mut options_strs = Vec::new();
+    for (name, options, index, build_time) in indices {
         let mut index_recalls = Vec::new();
         let mut index_spqs = Vec::new();
         for &(k, ef) in params {
@@ -151,16 +164,38 @@ pub fn evaluate_filtered(
         recalls.push((name, index_recalls));
         spqs.push((name, index_spqs));
         build_times.push((name, build_time));
+        options_strs.push((name, options));
     }
 
     let header: Vec<String> = params
         .iter()
         .map(|(k, ef)| format!("k={k},ef={ef}"))
         .collect();
-    print_evaluation_results(&header, &recalls, &spqs, &build_times);
+    print_evaluation_results(
+        &header,
+        &recalls,
+        &spqs,
+        &build_times,
+        &options_strs,
+        format,
+    );
 }
 
 fn print_evaluation_results(
+    header_labels: &[String],
+    recalls: &[(&str, Vec<f32>)],
+    spqs: &[(&str, Vec<Duration>)],
+    build_times: &[(&str, Duration)],
+    options_strs: &[(&str, String)],
+    format: OutputFormat,
+) {
+    match format {
+        OutputFormat::Table => print_table(header_labels, recalls, spqs, build_times),
+        OutputFormat::Csv => print_csv(recalls, spqs, build_times, options_strs),
+    }
+}
+
+fn print_table(
     header_labels: &[String],
     recalls: &[(&str, Vec<f32>)],
     spqs: &[(&str, Vec<Duration>)],
@@ -182,6 +217,40 @@ fn print_evaluation_results(
         .map(|(name, vals)| (*name, vals.iter().map(|s| 1.0 / s.as_secs_f64()).collect()))
         .collect();
     print_rows("QPS", &qps, build_times, |r| format!("{:>15.1}", r));
+}
+
+fn print_csv(
+    recalls: &[(&str, Vec<f32>)],
+    spqs: &[(&str, Vec<Duration>)],
+    build_times: &[(&str, Duration)],
+    options_strs: &[(&str, String)],
+) {
+    // One row per algorithm: algorithm;options;build_time_s;recall;qps;recall;qps;...
+    for (name, recall_vals) in recalls {
+        let bt = build_times
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, t)| t.as_secs_f64())
+            .unwrap_or(0.0);
+        let opts = options_strs
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, o)| o.as_str())
+            .unwrap_or("");
+        let spq_vals = &spqs.iter().find(|(n, _)| n == name).unwrap().1;
+
+        let mut row_parts = vec![
+            name.to_string(),
+            format!("\"{}\"", opts),
+            format!("{bt:.4}"),
+        ];
+        for (i, recall) in recall_vals.iter().enumerate() {
+            let qps = 1.0 / spq_vals[i].as_secs_f64();
+            row_parts.push(format!("{recall:.4}"));
+            row_parts.push(format!("{qps:.1}"));
+        }
+        println!("{}", row_parts.join(";"));
+    }
 }
 
 fn fmt_duration(d: &Duration) -> String {

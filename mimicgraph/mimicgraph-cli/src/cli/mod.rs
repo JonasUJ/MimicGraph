@@ -43,6 +43,13 @@ pub enum DatasetMode {
     Unfiltered,
 }
 
+#[derive(Copy, Clone, Debug, Default, ValueEnum)]
+pub enum OutputFormat {
+    #[default]
+    Table,
+    Csv,
+}
+
 /// Resolved filtered/unfiltered state with loaded label data.
 pub enum FilteredMode {
     Filtered {

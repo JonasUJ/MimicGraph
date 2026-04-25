@@ -1,6 +1,6 @@
 use crate::cli::commands::common::{BuildContext, IndexConfig};
 use crate::cli::utils::{dataset_file_name, parse_search_options, path_str};
-use crate::cli::{DatasetMode, FilteredMode};
+use crate::cli::{DatasetMode, FilteredMode, OutputFormat};
 use crate::eval::{
     compute_filtered_ground_truth, compute_ground_truth, evaluate, evaluate_filtered,
 };
@@ -91,6 +91,10 @@ pub struct EvalCommand {
     /// RoarGraph options (m,l,q)
     #[arg(long, default_value = "m=32,l=500,q=10")]
     roargraph_options: String,
+
+    /// Output format for evaluation results
+    #[arg(long, value_enum, default_value_t = OutputFormat::Table)]
+    format: OutputFormat,
 }
 
 impl EvalCommand {
@@ -168,6 +172,7 @@ impl EvalCommand {
                     &eval_queries,
                     &ground_truth.value,
                     eval_query_labels,
+                    self.format,
                 );
             }
             FilteredMode::Unfiltered => {
@@ -184,7 +189,13 @@ impl EvalCommand {
                     &self.roargraph_options,
                 )?;
 
-                evaluate(indices, &params, &eval_queries, &ground_truth.value);
+                evaluate(
+                    indices,
+                    &params,
+                    &eval_queries,
+                    &ground_truth.value,
+                    self.format,
+                );
             }
         }
 
