@@ -10,6 +10,9 @@ use roargraph::H5File;
 #[command(author, version, about, long_about = None)]
 #[command(propagate_version = true)]
 pub struct Cli {
+    #[command(flatten)]
+    pub verbose: clap_verbosity_flag::Verbosity,
+
     #[command(subcommand)]
     pub command: Commands,
 }
