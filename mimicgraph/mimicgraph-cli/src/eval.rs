@@ -1,5 +1,5 @@
 use crate::WithMetadata;
-use hnsw_itu::{Distance, HNSW, Index, MinK, Point};
+use hnsw_itu::{Distance, HNSW, Index, Point};
 use mimicgraph_core::labels::LabelSet;
 use mimicgraph_core::mimicgraph::filtered::{FilteredMimicGraph, FilteredMimicGraphSearchOptions};
 use mimicgraph_core::mimicgraph::plain::MimicGraph;
@@ -220,21 +220,7 @@ pub fn compute_ground_truth(
 ) -> WithMetadata<Vec<Vec<(usize, f32)>>> {
     crate::artifacts::load_or_create(Path::new(filename), || {
         info!("Computing ground truth nearest neighbors...");
-        queries
-            .par_iter()
-            .map(|q| {
-                let mut closest = corpus
-                    .iter()
-                    .enumerate()
-                    .map(|(k, d)| Distance::new(d.distance(q), k, d))
-                    .min_k(100);
-                closest.sort();
-                closest
-                    .iter()
-                    .map(|d| (d.key, d.distance))
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>()
+        mimicgraph_core::gt::compute_ground_truth(queries, corpus, 100)
     })
 }
 
@@ -247,30 +233,13 @@ pub fn compute_filtered_ground_truth(
 ) -> WithMetadata<Vec<Vec<(usize, f32)>>> {
     crate::artifacts::load_or_create(Path::new(filename), || {
         info!("Computing filtered ground truth nearest neighbors...");
-        queries
-            .par_iter()
-            .enumerate()
-            .map(|(qi, q)| {
-                let q_labels = &query_labels[qi];
-                let mut closest = corpus
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(di, d)| {
-                        let d_labels = &labels[di];
-                        if mimicgraph_core::labels::labels_intersect(d_labels, q_labels) {
-                            Some(Distance::new(d.distance(q), di, d))
-                        } else {
-                            None
-                        }
-                    })
-                    .min_k(100);
-                closest.sort();
-                closest
-                    .iter()
-                    .map(|d| (d.key, d.distance))
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>()
+        mimicgraph_core::gt::compute_filtered_ground_truth(
+            queries,
+            corpus,
+            labels,
+            query_labels,
+            100,
+        )
     })
 }
 

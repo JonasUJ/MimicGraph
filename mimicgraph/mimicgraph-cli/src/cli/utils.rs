@@ -43,23 +43,23 @@ pub fn require_labels(
     })
 }
 
-pub fn parse_search_params(input: &str) -> Result<Vec<(usize, usize)>> {
-    let mut params = Vec::new();
+pub fn parse_search_options(input: &str) -> Result<Vec<(usize, usize)>> {
+    let mut options = Vec::new();
 
     for entry in input.split(',').filter(|s| !s.trim().is_empty()) {
         let trimmed = entry.trim();
         let Some((k, ef)) = trimmed.split_once(':') else {
-            anyhow::bail!("invalid --search-params entry, expected k:ef");
+            anyhow::bail!("invalid --search-options entry, expected k:ef");
         };
 
-        params.push((k.trim().parse()?, ef.trim().parse()?));
+        options.push((k.trim().parse()?, ef.trim().parse()?));
     }
 
-    if params.is_empty() {
-        anyhow::bail!("--search-params must not be empty");
+    if options.is_empty() {
+        anyhow::bail!("--search-options must not be empty");
     }
 
-    Ok(params)
+    Ok(options)
 }
 
 pub fn validate_build_percent(build_percent: f64) -> Result<()> {

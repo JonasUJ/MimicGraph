@@ -5,7 +5,7 @@ use clap::Args;
 use roargraph::{BufferedDataset, H5File, Row};
 use std::fs;
 use std::path::PathBuf;
-use tracing::info;
+use tracing::{error, info};
 
 /// Build index artifacts
 #[derive(Args, Debug)]
@@ -35,23 +35,23 @@ pub struct BuildCommand {
     build_percent: f64,
 
     /// Build MimicGraph index
-    #[arg(long, default_value_t = true)]
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
     build_mimicgraph: bool,
 
     /// Build HNSW index
-    #[arg(long, default_value_t = true)]
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
     build_hnsw: bool,
 
     /// Build RoarGraph index
-    #[arg(long, default_value_t = false)]
+    #[arg(long, default_value_t = false, action = clap::ArgAction::Set)]
     build_roargraph: bool,
 
     /// Build FilteredMimicGraph index
-    #[arg(long, default_value_t = true)]
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
     build_filtered_mimicgraph: bool,
 
     /// Build FilteredVamana index
-    #[arg(long, default_value_t = true)]
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
     build_filtered_vamana: bool,
 
     /// MimicGraph options (m,l,p,e,qk,qef,con,vis)
@@ -107,6 +107,17 @@ impl BuildCommand {
             .or_else(|_| BufferedDataset::<'_, Row<f32>, _>::open(path, "learn"))?
             .into_iter()
             .collect::<Vec<_>>();
+
+        if queries.len() < build_count {
+            let error = format!(
+                "Not enough queries for build count ({}% = {}, queries available: {})",
+                self.build_percent,
+                build_count,
+                queries.len()
+            );
+            error!("{error}");
+            return Err(anyhow::anyhow!(error));
+        }
 
         info!(
             "Build count: {build_count} ({:.3}% of corpus)",

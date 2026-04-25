@@ -1,6 +1,6 @@
 use crate::cli::commands::common::{BuildContext, IndexConfig};
 use crate::cli::utils::{
-    build_count_from_percent, dataset_file_name, parse_search_params, path_str,
+    build_count_from_percent, dataset_file_name, parse_search_options, path_str,
     validate_build_percent,
 };
 use crate::cli::{DatasetMode, FilteredMode};
@@ -12,7 +12,7 @@ use clap::Args;
 use roargraph::{BufferedDataset, H5File, Row};
 use std::fs;
 use std::path::PathBuf;
-use tracing::info;
+use tracing::{error, info};
 
 /// Build index artifacts and evaluate recall
 #[derive(Args, Debug)]
@@ -41,33 +41,33 @@ pub struct EvalCommand {
     #[arg(long, default_value_t = 10_000)]
     eval_count: usize,
 
-    /// Percent of corpus used as build queries (0, 100]
+    /// Percentage of corpus used as build queries (0, 100]
     #[arg(long, default_value_t = 10.0)]
     build_percent: f64,
 
-    /// Search sweep: k:ef pairs, comma-separated (e.g. 10:10,10:20,100:100)
+    /// Search comma-separated k:ef pairs
     #[arg(long, default_value = "10:10,10:20,10:100,100:100,100:200,100:1000")]
-    search_params: String,
+    search_options: String,
 
     // Unfiltered index flags (default all true for backward compat, but user can disable)
     /// Build MimicGraph index
-    #[arg(long, default_value_t = true)]
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
     build_mimicgraph: bool,
 
     /// Build HNSW index
-    #[arg(long, default_value_t = true)]
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
     build_hnsw: bool,
 
     /// Build RoarGraph index
-    #[arg(long, default_value_t = false)]
+    #[arg(long, default_value_t = false, action = clap::ArgAction::Set)]
     build_roargraph: bool,
 
     /// Build FilteredMimicGraph index
-    #[arg(long, default_value_t = true)]
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
     build_filtered_mimicgraph: bool,
 
     /// Build FilteredVamana index
-    #[arg(long, default_value_t = true)]
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
     build_filtered_vamana: bool,
 
     /// MimicGraph options (m,l,p,e,qk,qef,con,vis)
@@ -124,6 +124,17 @@ impl EvalCommand {
             .into_iter()
             .collect::<Vec<_>>();
 
+        if queries.len() < build_count {
+            let error = format!(
+                "Not enough queries for build count ({}% = {}, queries available: {})",
+                self.build_percent,
+                build_count,
+                queries.len()
+            );
+            error!("{error}");
+            return Err(anyhow::anyhow!(error));
+        }
+
         let eval_count = self.eval_count.min(queries.len());
         let eval_start = queries.len().saturating_sub(eval_count);
         let eval_queries = queries[eval_start..].to_vec();
@@ -133,7 +144,7 @@ impl EvalCommand {
             build_count as f64 * 100.0 / num_corpus as f64
         );
 
-        let params = parse_search_params(&self.search_params)?;
+        let params = parse_search_options(&self.search_options)?;
 
         let ctx = BuildContext {
             artifact_dir: &self.artifact_dir,
