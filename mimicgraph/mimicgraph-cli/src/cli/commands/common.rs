@@ -1,8 +1,5 @@
 use crate::artifacts::{WithMetadata, build_and_save, load_or_create};
-use crate::cli::utils::{
-    parse_filtered_mimicgraph_options, parse_filtered_vamana_options, parse_hnsw_options,
-    parse_mimicgraph_options, parse_roargraph_options, path_str,
-};
+use crate::cli::utils::*;
 use crate::eval::{FilteredTestIndex, TestIndex, compute_ground_truth};
 use anyhow::Result;
 use hnsw_itu::{HNSWBuilder, IndexBuilder};
@@ -16,7 +13,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::path::Path;
 use std::time::Duration;
-use tracing::info;
+use tracing::{error, info};
 
 /// Configuration for which indices to build
 pub struct IndexConfig {
@@ -32,7 +29,6 @@ pub struct BuildContext<'a> {
     pub artifact_dir: &'a Path,
     pub dataset_name: &'a str,
     pub num_corpus: usize,
-    pub build_count: usize,
     pub corpus: &'a [Row<f32>],
     pub queries: &'a [Row<f32>],
     pub force_recreate: bool,
@@ -52,6 +48,20 @@ impl<'a> BuildContext<'a> {
         }
     }
 
+    fn ensure_enough_queries(&self, build_count: usize, q: f32, index_name: &str) -> Result<()> {
+        if self.queries.len() < build_count {
+            let msg = format!(
+                "Not enough queries for {index_name} build count (q={q}% = {build_count}, queries available: {})",
+                self.queries.len()
+            );
+            error!("{msg}");
+
+            return Err(anyhow::anyhow!(msg));
+        }
+
+        Ok(())
+    }
+
     pub fn build_unfiltered(
         &self,
         mg_options_str: &str,
@@ -63,9 +73,13 @@ impl<'a> BuildContext<'a> {
         if self.index_config.build_mimicgraph {
             let mg_options = parse_mimicgraph_options(mg_options_str)?;
 
+            validate_build_percent(mg_options.q)?;
+            let build_count = build_count_from_percent(self.corpus.len(), mg_options.q);
+            self.ensure_enough_queries(build_count, mg_options.q, "MimicGraph")?;
+
             let graph_file = self.artifact_dir.join(format!(
                 "mimicgraph_{}_d={}_q={}_{:?}.bin",
-                self.dataset_name, self.num_corpus, self.build_count, mg_options
+                self.dataset_name, self.num_corpus, build_count, mg_options
             ));
             let graph_meta = self.artifact(&graph_file, || {
                 info!("Building MimicGraph...");
@@ -73,7 +87,7 @@ impl<'a> BuildContext<'a> {
                     &self
                         .queries
                         .iter()
-                        .take(self.build_count)
+                        .take(build_count)
                         .cloned()
                         .collect::<Vec<_>>(),
                     self.corpus.to_vec(),
@@ -117,33 +131,33 @@ impl<'a> BuildContext<'a> {
         if self.index_config.build_roargraph {
             let rg_options = parse_roargraph_options(rg_options_str)?;
 
+            validate_build_percent(rg_options.q)?;
+            let build_count = build_count_from_percent(self.corpus.len(), rg_options.q);
+            self.ensure_enough_queries(build_count, rg_options.q, "RoarGraph")?;
+
             let build_gt_file = self.artifact_dir.join(format!(
                 "build_ground_truth_{}_d={}_q={}.bin",
-                self.dataset_name, self.num_corpus, self.build_count
+                self.dataset_name, self.num_corpus, build_count
             ));
             let build_gt = compute_ground_truth(
                 path_str(&build_gt_file)?,
-                &self.queries[..self.build_count],
+                &self.queries[..build_count],
                 self.corpus,
             );
 
             let rg_file = self.artifact_dir.join(format!(
                 "roargraph_{}_d={}_q={}_{:?}.bin",
-                self.dataset_name, self.num_corpus, self.build_count, rg_options
+                self.dataset_name, self.num_corpus, build_count, rg_options
             ));
             let rg_meta = self.artifact(&rg_file, || {
-                info!("Building RoarGraph (build count: {})...", self.build_count);
+                info!("Building RoarGraph (build count: {build_count})...");
                 roargraph::RoarGraphBuilder::new(rg_options).build(
-                    self.queries
-                        .iter()
-                        .take(self.build_count)
-                        .cloned()
-                        .collect(),
+                    self.queries.iter().take(build_count).cloned().collect(),
                     self.corpus.to_vec(),
                     build_gt
                         .value
                         .iter()
-                        .take(self.build_count)
+                        .take(build_count)
                         .cloned()
                         .map(|v| v.into_iter().map(|(i, _)| i).collect())
                         .collect(),
@@ -171,16 +185,21 @@ impl<'a> BuildContext<'a> {
 
         if self.index_config.build_filtered_mimicgraph {
             let filtered_mg = parse_filtered_mimicgraph_options(filtered_mg_options_str)?;
+
+            validate_build_percent(filtered_mg.base.q)?;
+            let build_count = build_count_from_percent(self.corpus.len(), filtered_mg.base.q);
+            self.ensure_enough_queries(build_count, filtered_mg.base.q, "FilteredMimicGraph")?;
+
             let graph_options = FilteredMimicGraphOptions {
                 base_options: filtered_mg.base,
                 threshold: filtered_mg.threshold,
                 labels: labels.to_vec(),
-                query_labels: query_labels[..self.build_count].to_vec(),
+                query_labels: query_labels[..build_count].to_vec(),
             };
 
             let graph_file = self.artifact_dir.join(format!(
                 "filtered-mimicgraph_{}_d={}_q={}_{:?}.bin",
-                self.dataset_name, self.num_corpus, self.build_count, graph_options.base_options
+                self.dataset_name, self.num_corpus, build_count, graph_options.base_options
             ));
             let graph_meta = self.artifact(&graph_file, || {
                 info!("Building FilteredMimicGraph...");
@@ -188,7 +207,7 @@ impl<'a> BuildContext<'a> {
                     &self
                         .queries
                         .iter()
-                        .take(self.build_count)
+                        .take(build_count)
                         .cloned()
                         .collect::<Vec<_>>(),
                     self.corpus.to_vec(),

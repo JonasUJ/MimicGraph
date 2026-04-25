@@ -27,6 +27,8 @@ pub struct MimicGraphOptions {
     pub con: bool,
     /// Use visited nodes as candidates
     pub vis: bool,
+    /// Percentage of corpus used as build queries (0, 100]
+    pub q: f32,
 }
 
 pub trait Builder<P: Point + Send + Sync> {

@@ -62,20 +62,20 @@ pub fn parse_search_options(input: &str) -> Result<Vec<(usize, usize)>> {
     Ok(options)
 }
 
-pub fn validate_build_percent(build_percent: f64) -> Result<()> {
+pub fn validate_build_percent(build_percent: f32) -> Result<()> {
     anyhow::ensure!(
         build_percent > 0.0 && build_percent <= 100.0,
-        "--build-percent must be in (0, 100]"
+        "build percentage (q) must be in (0, 100]"
     );
 
     Ok(())
 }
 
-pub fn build_count_from_percent(corpus_len: usize, build_percent: f64) -> usize {
+pub fn build_count_from_percent(corpus_len: usize, build_percent: f32) -> usize {
     if corpus_len == 0 {
         0
     } else {
-        let raw = ((corpus_len as f64) * (build_percent / 100.0)).round() as usize;
+        let raw = ((corpus_len as f32) * (build_percent / 100.0)).round() as usize;
 
         raw.clamp(1, corpus_len)
     }
@@ -157,6 +157,7 @@ pub fn parse_mimicgraph_options(input: &str) -> Result<MimicGraphOptions> {
         qef: take_usize(&mut map, "qef", 100)?,
         con: take_bool(&mut map, "con", false)?,
         vis: take_bool(&mut map, "vis", true)?,
+        q: take_f32(&mut map, "q", 10.0)?,
     };
     ensure_empty(&map)?;
 
@@ -175,6 +176,7 @@ pub fn parse_filtered_mimicgraph_options(input: &str) -> Result<ParsedFilteredMi
         qef: take_usize(&mut map, "qef", 100)?,
         con: take_bool(&mut map, "con", false)?,
         vis: take_bool(&mut map, "vis", true)?,
+        q: take_f32(&mut map, "q", 10.0)?,
     };
     let threshold = take_usize(&mut map, "threshold", 1000)?;
     ensure_empty(&map)?;
@@ -215,6 +217,7 @@ pub fn parse_roargraph_options(input: &str) -> Result<RoarGraphOptions> {
     let options = RoarGraphOptions {
         m: take_usize(&mut map, "m", 32)?,
         l: take_usize(&mut map, "l", 500)?,
+        q: take_f32(&mut map, "q", 10.0)?,
     };
     ensure_empty(&map)?;
 

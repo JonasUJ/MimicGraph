@@ -1,8 +1,5 @@
 use crate::cli::commands::common::{BuildContext, IndexConfig};
-use crate::cli::utils::{
-    build_count_from_percent, dataset_file_name, parse_search_options, path_str,
-    validate_build_percent,
-};
+use crate::cli::utils::{dataset_file_name, parse_search_options, path_str};
 use crate::cli::{DatasetMode, FilteredMode};
 use crate::eval::{
     compute_filtered_ground_truth, compute_ground_truth, evaluate, evaluate_filtered,
@@ -12,7 +9,7 @@ use clap::Args;
 use roargraph::{BufferedDataset, H5File, Row};
 use std::fs;
 use std::path::PathBuf;
-use tracing::{error, info};
+use tracing::info;
 
 /// Build index artifacts and evaluate recall
 #[derive(Args, Debug)]
@@ -41,10 +38,6 @@ pub struct EvalCommand {
     #[arg(long, default_value_t = 10_000)]
     eval_count: usize,
 
-    /// Percentage of corpus used as build queries (0, 100]
-    #[arg(long, default_value_t = 10.0)]
-    build_percent: f64,
-
     /// Search comma-separated k:ef pairs
     #[arg(long, default_value = "10:10,10:20,10:100,100:100,100:200,100:1000")]
     search_options: String,
@@ -70,17 +63,17 @@ pub struct EvalCommand {
     #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
     build_filtered_vamana: bool,
 
-    /// MimicGraph options (m,l,p,e,qk,qef,con,vis)
+    /// MimicGraph options (m,l,p,e,qk,qef,con,vis,q)
     #[arg(
         long,
-        default_value = "m=32,l=500,p=100,e=16,qk=0,qef=100,con=false,vis=true"
+        default_value = "m=32,l=500,p=100,e=16,qk=0,qef=100,con=false,vis=true,q=10"
     )]
     mimicgraph_options: String,
 
-    /// Filtered MimicGraph options (m,l,p,e,qk,qef,con,vis,threshold)
+    /// Filtered MimicGraph options (m,l,p,e,qk,qef,con,vis,q,threshold)
     #[arg(
         long,
-        default_value = "m=32,l=500,p=100,e=16,qk=0,qef=100,con=false,vis=true,threshold=1000"
+        default_value = "m=32,l=500,p=100,e=16,qk=0,qef=100,con=false,vis=true,q=10,threshold=1000"
     )]
     filtered_mimicgraph_options: String,
 
@@ -95,15 +88,13 @@ pub struct EvalCommand {
     #[arg(long, default_value = "alpha=1.2,l=90,r=96,threshold=1000")]
     filtered_vamana_options: String,
 
-    /// RoarGraph options (m,l)
-    #[arg(long, default_value = "m=32,l=500")]
+    /// RoarGraph options (m,l,q)
+    #[arg(long, default_value = "m=32,l=500,q=10")]
     roargraph_options: String,
 }
 
 impl EvalCommand {
     pub fn run(self) -> Result<()> {
-        validate_build_percent(self.build_percent)?;
-
         fs::create_dir_all(&self.artifact_dir)?;
 
         let path = self.datafile.as_path();
@@ -118,31 +109,14 @@ impl EvalCommand {
         info!("Corpus size: {} of {}", num_corpus, dataset.size());
         let corpus = dataset.into_iter().take(num_corpus).collect::<Vec<_>>();
 
-        let build_count = build_count_from_percent(corpus.len(), self.build_percent);
         let queries = BufferedDataset::<'_, Row<f32>, _>::open(path, "query_points")
             .or_else(|_| BufferedDataset::<'_, Row<f32>, _>::open(path, "learn"))?
             .into_iter()
             .collect::<Vec<_>>();
 
-        if queries.len() < build_count {
-            let error = format!(
-                "Not enough queries for build count ({}% = {}, queries available: {})",
-                self.build_percent,
-                build_count,
-                queries.len()
-            );
-            error!("{error}");
-            return Err(anyhow::anyhow!(error));
-        }
-
         let eval_count = self.eval_count.min(queries.len());
         let eval_start = queries.len().saturating_sub(eval_count);
         let eval_queries = queries[eval_start..].to_vec();
-
-        info!(
-            "Build count: {build_count} ({:.3}% of corpus)",
-            build_count as f64 * 100.0 / num_corpus as f64
-        );
 
         let params = parse_search_options(&self.search_options)?;
 
@@ -150,7 +124,6 @@ impl EvalCommand {
             artifact_dir: &self.artifact_dir,
             dataset_name,
             num_corpus,
-            build_count,
             corpus: &corpus,
             queries: &queries,
             force_recreate: self.force_recreate,
