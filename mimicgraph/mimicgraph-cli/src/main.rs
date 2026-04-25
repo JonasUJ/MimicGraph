@@ -25,7 +25,7 @@ fn main() -> anyhow::Result<()> {
     };
 
     tracing_subscriber::registry()
-        .with(fmt::layer().with_filter(level))
+        .with(fmt::layer().with_writer(std::io::stderr).with_filter(level))
         .init();
 
     cli.command.exec()

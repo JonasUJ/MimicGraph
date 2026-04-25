@@ -167,6 +167,7 @@ impl EvalCommand {
                 )?;
 
                 evaluate_filtered(
+                    dataset_name,
                     indices,
                     &params,
                     &eval_queries,
@@ -190,6 +191,7 @@ impl EvalCommand {
                 )?;
 
                 evaluate(
+                    dataset_name,
                     indices,
                     &params,
                     &eval_queries,

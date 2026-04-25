@@ -74,6 +74,7 @@ impl<P: Point> Index<P> for FilteredTestIndex<P> {
 }
 
 pub fn evaluate(
+    dataset_name: &str,
     indices: Vec<(&str, String, TestIndex<Row<f32>>, Duration)>,
     params: &[(usize, usize)],
     eval_queries: &[Row<f32>],
@@ -115,6 +116,7 @@ pub fn evaluate(
         .map(|(k, ef)| format!("k={k},ef={ef}"))
         .collect();
     print_evaluation_results(
+        dataset_name,
         &header,
         &recalls,
         &spqs,
@@ -125,6 +127,7 @@ pub fn evaluate(
 }
 
 pub fn evaluate_filtered(
+    dataset_name: &str,
     indices: Vec<(&str, String, FilteredTestIndex<Row<f32>>, Duration)>,
     params: &[(usize, usize)],
     eval_queries: &[Row<f32>],
@@ -172,6 +175,7 @@ pub fn evaluate_filtered(
         .map(|(k, ef)| format!("k={k},ef={ef}"))
         .collect();
     print_evaluation_results(
+        dataset_name,
         &header,
         &recalls,
         &spqs,
@@ -182,6 +186,7 @@ pub fn evaluate_filtered(
 }
 
 fn print_evaluation_results(
+    dataset_name: &str,
     header_labels: &[String],
     recalls: &[(&str, Vec<f32>)],
     spqs: &[(&str, Vec<Duration>)],
@@ -191,7 +196,7 @@ fn print_evaluation_results(
 ) {
     match format {
         OutputFormat::Table => print_table(header_labels, recalls, spqs, build_times),
-        OutputFormat::Csv => print_csv(recalls, spqs, build_times, options_strs),
+        OutputFormat::Csv => print_csv(dataset_name, recalls, spqs, build_times, options_strs),
     }
 }
 
@@ -220,12 +225,13 @@ fn print_table(
 }
 
 fn print_csv(
+    dataset_name: &str,
     recalls: &[(&str, Vec<f32>)],
     spqs: &[(&str, Vec<Duration>)],
     build_times: &[(&str, Duration)],
     options_strs: &[(&str, String)],
 ) {
-    // One row per algorithm: algorithm;options;build_time_s;recall;qps;recall;qps;...
+    // One row per algorithm: dataset;algorithm;options;build_time_s;recall;qps;recall;qps;...
     for (name, recall_vals) in recalls {
         let bt = build_times
             .iter()
@@ -240,6 +246,7 @@ fn print_csv(
         let spq_vals = &spqs.iter().find(|(n, _)| n == name).unwrap().1;
 
         let mut row_parts = vec![
+            dataset_name.to_string(),
             name.to_string(),
             format!("\"{}\"", opts),
             format!("{bt:.4}"),
