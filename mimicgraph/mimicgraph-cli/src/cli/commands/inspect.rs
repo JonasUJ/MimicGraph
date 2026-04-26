@@ -1,13 +1,12 @@
-use crate::artifacts::{WithMetadata, inspect_with_metadata};
+use crate::artifacts::{
+    FilteredMimicGraphTopology, FilteredVamanaTopology, HNSWTopology, MimicGraphTopology,
+    RoarGraphTopology, WithMetadata, inspect_with_metadata,
+};
 use anyhow::Result;
 use bincode::deserialize_from;
 use clap::Args;
-use hnsw_itu::HNSW;
-use mimicgraph_core::mimicgraph::filtered::FilteredMimicGraph;
-use mimicgraph_core::mimicgraph::plain::MimicGraph;
-use mimicgraph_core::vamana::index::FilteredVamana;
-use roargraph::{AdjListGraph, RoarGraph, Row};
 use serde::de::DeserializeOwned;
+use std::collections::HashSet;
 use std::fs;
 use std::fs::File;
 use std::io::{BufReader, Write};
@@ -46,32 +45,24 @@ impl InspectCommand {
 }
 
 fn maybe_write_degree_file(path: &Path, artifact_dir: &Path) -> Result<Option<PathBuf>> {
-    if let Ok(metadata) = try_read::<MimicGraph<Row<f32>>>(path) {
-        return write_degree_file_from_graph(path, artifact_dir, &metadata.value.graph).map(Some);
+    if let Ok(metadata) = try_read::<MimicGraphTopology>(path) {
+        return write_degree_file(path, artifact_dir, &metadata.value.adj_lists).map(Some);
     }
 
-    if let Ok(metadata) = try_read::<FilteredMimicGraph<Row<f32>>>(path) {
-        return write_degree_file_from_graph(path, artifact_dir, &metadata.value.inner.graph)
-            .map(Some);
+    if let Ok(metadata) = try_read::<FilteredMimicGraphTopology>(path) {
+        return write_degree_file(path, artifact_dir, &metadata.value.inner.adj_lists).map(Some);
     }
 
-    if let Ok(metadata) = try_read::<HNSW<Row<f32>>>(path) {
-        let out = degree_file_path(path, artifact_dir)?;
-        let mut file = File::create(&out)?;
-
-        for adj in metadata.value.graph().adj_lists().iter() {
-            writeln!(file, "{}", adj.len())?;
-        }
-
-        return Ok(Some(out));
+    if let Ok(metadata) = try_read::<HNSWTopology>(path) {
+        return write_degree_file(path, artifact_dir, &metadata.value.base_adj_lists).map(Some);
     }
 
-    if let Ok(metadata) = try_read::<RoarGraph<Row<f32>>>(path) {
-        return write_degree_file_from_graph(path, artifact_dir, &metadata.value.graph).map(Some);
+    if let Ok(metadata) = try_read::<RoarGraphTopology>(path) {
+        return write_degree_file(path, artifact_dir, &metadata.value.adj_lists).map(Some);
     }
 
-    if let Ok(metadata) = try_read::<FilteredVamana<Row<f32>>>(path) {
-        return write_degree_file_from_graph(path, artifact_dir, &metadata.value.graph).map(Some);
+    if let Ok(metadata) = try_read::<FilteredVamanaTopology>(path) {
+        return write_degree_file(path, artifact_dir, &metadata.value.adj_lists).map(Some);
     }
 
     Ok(None)
@@ -92,15 +83,15 @@ fn degree_file_path(path: &Path, artifact_dir: &Path) -> Result<PathBuf> {
     Ok(artifact_dir.join(format!("degree_{name}.txt")))
 }
 
-fn write_degree_file_from_graph<T>(
+fn write_degree_file(
     path: &Path,
     artifact_dir: &Path,
-    graph: &AdjListGraph<T>,
+    adj_lists: &[HashSet<usize>],
 ) -> Result<PathBuf> {
     let out = degree_file_path(path, artifact_dir)?;
     let mut file = File::create(&out)?;
 
-    for adj in graph.adj_lists().iter() {
+    for adj in adj_lists {
         writeln!(file, "{}", adj.len())?;
     }
 

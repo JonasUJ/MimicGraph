@@ -127,6 +127,7 @@ impl EvalCommand {
         let ctx = BuildContext {
             artifact_dir: &self.artifact_dir,
             dataset_name,
+            dataset_path: path,
             num_corpus,
             corpus: &corpus,
             queries: &queries,

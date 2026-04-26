@@ -1,16 +1,17 @@
-use crate::artifacts::{WithMetadata, build_and_save, load_or_create};
+use crate::artifacts::{Topology, WithMetadata, build_and_save_topology, load_or_create_topology};
 use crate::cli::utils::*;
 use crate::eval::{FilteredTestIndex, TestIndex, compute_ground_truth};
 use anyhow::Result;
-use hnsw_itu::{HNSWBuilder, IndexBuilder};
+use hnsw_itu::{HNSW, HNSWBuilder, IndexBuilder};
 use mimicgraph_core::labels::LabelSet;
 use mimicgraph_core::mimicgraph::Builder;
-use mimicgraph_core::mimicgraph::filtered::{FilteredMimicGraphBuilder, FilteredMimicGraphOptions};
+use mimicgraph_core::mimicgraph::filtered::{
+    FilteredMimicGraph, FilteredMimicGraphBuilder, FilteredMimicGraphOptions,
+};
 use mimicgraph_core::mimicgraph::plain::MimicGraphBuilder;
 use mimicgraph_core::vamana::filtered::{FilteredVamanaBuilder, FilteredVamanaOptions};
-use roargraph::Row;
-use serde::Serialize;
-use serde::de::DeserializeOwned;
+use mimicgraph_core::vamana::index::FilteredVamana;
+use roargraph::{RoarGraph, Row};
 use std::path::Path;
 use std::time::Duration;
 use tracing::{error, info};
@@ -28,6 +29,7 @@ pub struct IndexConfig {
 pub struct BuildContext<'a> {
     pub artifact_dir: &'a Path,
     pub dataset_name: &'a str,
+    pub dataset_path: &'a Path,
     pub num_corpus: usize,
     pub corpus: &'a [Row<f32>],
     pub queries: &'a [Row<f32>],
@@ -36,15 +38,15 @@ pub struct BuildContext<'a> {
 }
 
 impl<'a> BuildContext<'a> {
-    fn artifact<T: Serialize + DeserializeOwned>(
+    fn artifact_topology<I: Topology>(
         &self,
         path: &Path,
-        create: impl FnOnce() -> T,
-    ) -> WithMetadata<T> {
+        create: impl FnOnce() -> I,
+    ) -> WithMetadata<I::Compact> {
         if self.force_recreate {
-            build_and_save(path, create)
+            build_and_save_topology(path, self.dataset_path, create)
         } else {
-            load_or_create(path, create)
+            load_or_create_topology(path, self.dataset_path, create)
         }
     }
 
@@ -81,7 +83,7 @@ impl<'a> BuildContext<'a> {
                 "mimicgraph_{}_d={}_q={}_{:?}.bin",
                 self.dataset_name, self.num_corpus, build_count, mg_options
             ));
-            let graph_meta = self.artifact(&graph_file, || {
+            let graph_meta = self.artifact_topology(&graph_file, || {
                 info!("Building MimicGraph...");
                 MimicGraphBuilder::new(mg_options).build(
                     &self
@@ -94,10 +96,15 @@ impl<'a> BuildContext<'a> {
                 )
             });
 
+            let loaded = <mimicgraph_core::mimicgraph::plain::MimicGraph<Row<f32>> as Topology>::from_topology(
+                graph_meta.value,
+                self.corpus.to_vec(),
+            );
+
             indices.push((
                 "MimicGraph",
                 mg_options_str.to_string(),
-                TestIndex::MimicGraph(graph_meta.value),
+                TestIndex::MimicGraph(loaded),
                 graph_meta.build_time,
             ));
         }
@@ -115,17 +122,19 @@ impl<'a> BuildContext<'a> {
                 "hnsw_{}_d={}_{:?}.bin",
                 self.dataset_name, self.num_corpus, hnsw_options
             ));
-            let hnsw_meta = self.artifact(&hnsw_file, || {
+            let hnsw_meta = self.artifact_topology(&hnsw_file, || {
                 info!("Building HNSW...");
                 let mut builder = HNSWBuilder::new(hnsw_options);
                 builder.extend_parallel(self.corpus.iter().cloned());
                 builder.build()
             });
 
+            let loaded = HNSW::from_topology(hnsw_meta.value, self.corpus.to_vec());
+
             indices.push((
                 "HNSW",
                 hnsw_options_str.to_string(),
-                TestIndex::Hnsw(hnsw_meta.value),
+                TestIndex::Hnsw(loaded),
                 hnsw_meta.build_time,
             ));
         }
@@ -151,7 +160,7 @@ impl<'a> BuildContext<'a> {
                 "roargraph_{}_d={}_q={}_{:?}.bin",
                 self.dataset_name, self.num_corpus, build_count, rg_options
             ));
-            let rg_meta = self.artifact(&rg_file, || {
+            let rg_meta = self.artifact_topology(&rg_file, || {
                 info!("Building RoarGraph (build count: {build_count})...");
                 roargraph::RoarGraphBuilder::new(rg_options).build(
                     self.queries.iter().take(build_count).cloned().collect(),
@@ -166,10 +175,12 @@ impl<'a> BuildContext<'a> {
                 )
             });
 
+            let loaded = RoarGraph::from_topology(rg_meta.value, self.corpus.to_vec());
+
             indices.push((
                 "RoarGraph",
                 rg_options_str.to_string(),
-                TestIndex::RoarGraph(rg_meta.value),
+                TestIndex::RoarGraph(loaded),
                 rg_meta.build_time + build_gt.build_time,
             ));
         }
@@ -204,7 +215,7 @@ impl<'a> BuildContext<'a> {
                 "filtered-mimicgraph_{}_d={}_q={}_{:?}.bin",
                 self.dataset_name, self.num_corpus, build_count, graph_options.base_options
             ));
-            let graph_meta = self.artifact(&graph_file, || {
+            let graph_meta = self.artifact_topology(&graph_file, || {
                 info!("Building FilteredMimicGraph...");
                 FilteredMimicGraphBuilder::new(graph_options).build(
                     &self
@@ -217,10 +228,12 @@ impl<'a> BuildContext<'a> {
                 )
             });
 
+            let loaded = FilteredMimicGraph::from_topology(graph_meta.value, self.corpus.to_vec());
+
             indices.push((
                 "F-MimicGraph",
                 filtered_mg_options_str.to_string(),
-                FilteredTestIndex::MimicGraph(graph_meta.value),
+                FilteredTestIndex::MimicGraph(loaded),
                 graph_meta.build_time,
             ));
         }
@@ -239,17 +252,19 @@ impl<'a> BuildContext<'a> {
                 "filtered-vamana_{}_d={}_{:?}.bin",
                 self.dataset_name, self.num_corpus, vamana_options
             ));
-            let vamana_meta = self.artifact(&vamana_file, || {
+            let vamana_meta = self.artifact_topology(&vamana_file, || {
                 info!("Building FilteredVamana...");
                 let mut builder = FilteredVamanaBuilder::new(vamana_options);
                 builder.extend(self.corpus.iter().cloned());
                 builder.build()
             });
 
+            let loaded = FilteredVamana::from_topology(vamana_meta.value, self.corpus.to_vec());
+
             indices.push((
                 "F-Vamana",
                 vamana_options_str.to_string(),
-                FilteredTestIndex::Vamana(vamana_meta.value),
+                FilteredTestIndex::Vamana(loaded),
                 vamana_meta.build_time,
             ));
         }
