@@ -103,11 +103,12 @@ fn filtered_search_core<'a, P: Point>(
             results.pop_max();
         }
 
-        if results.len() >= options.ef
-            && let Some(worst) = results.peek_max()
-            && candidate.distance > worst.distance
-        {
-            break;
+        if results.len() >= options.ef {
+            if let Some(worst) = results.peek_max() {
+                if candidate.distance > worst.distance {
+                    break;
+                }
+            }
         }
 
         for n in get_neighbors(candidate.key) {
