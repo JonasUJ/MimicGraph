@@ -11,7 +11,7 @@ use roargraph::H5File;
 #[command(propagate_version = true)]
 pub struct Cli {
     #[command(flatten)]
-    pub verbose: clap_verbosity_flag::Verbosity,
+    pub verbose: clap_verbosity_flag::Verbosity<clap_verbosity_flag::InfoLevel>,
 
     #[command(subcommand)]
     pub command: Commands,

@@ -4,11 +4,10 @@ use crate::eval::{FilteredTestIndex, TestIndex, compute_ground_truth};
 use anyhow::Result;
 use hnsw_itu::{HNSW, HNSWBuilder, IndexBuilder};
 use mimicgraph_core::labels::LabelSet;
-use mimicgraph_core::mimicgraph::Builder;
-use mimicgraph_core::mimicgraph::filtered::{
-    FilteredMimicGraph, FilteredMimicGraphBuilder, FilteredMimicGraphOptions,
-};
+use mimicgraph_core::mimicgraph::filtered::{FilteredMimicGraph, FilteredMimicGraphBuilder};
 use mimicgraph_core::mimicgraph::plain::MimicGraphBuilder;
+use mimicgraph_core::mimicgraph::{Builder, MimicGraphOptions};
+use mimicgraph_core::vamana::FilteredMimicGraphOptions;
 use mimicgraph_core::vamana::filtered::{FilteredVamanaBuilder, FilteredVamanaOptions};
 use mimicgraph_core::vamana::index::FilteredVamana;
 use roargraph::{RoarGraph, Row};
@@ -73,15 +72,25 @@ impl<'a> BuildContext<'a> {
         let mut indices = Vec::new();
 
         if self.index_config.build_mimicgraph {
-            let mg_options = parse_mimicgraph_options(mg_options_str)?;
+            let is_tuned = mg_options_str.trim().eq_ignore_ascii_case("tuned");
+            let mg_options = if is_tuned {
+                MimicGraphOptions::tuned(self.corpus, self.queries)
+            } else {
+                parse_mimicgraph_options(mg_options_str)?
+            };
 
             validate_build_percent(mg_options.q)?;
             let build_count = build_count_from_percent(self.corpus.len(), mg_options.q);
             self.ensure_enough_queries(build_count, mg_options.q, "MimicGraph")?;
 
+            let options_label = if is_tuned {
+                "tuned".to_string()
+            } else {
+                format!("{:?}", mg_options)
+            };
             let graph_file = self.artifact_dir.join(format!(
-                "mimicgraph_{}_d={}_q={}_{:?}.bin",
-                self.dataset_name, self.num_corpus, build_count, mg_options
+                "mimicgraph_{}_d={}_q={}_{}.bin",
+                self.dataset_name, self.num_corpus, build_count, options_label
             ));
             let graph_meta = self.artifact_topology(&graph_file, || {
                 info!("Building MimicGraph...");
@@ -198,22 +207,46 @@ impl<'a> BuildContext<'a> {
         let mut indices = Vec::new();
 
         if self.index_config.build_filtered_mimicgraph {
-            let filtered_mg = parse_filtered_mimicgraph_options(filtered_mg_options_str)?;
-
-            validate_build_percent(filtered_mg.base.q)?;
-            let build_count = build_count_from_percent(self.corpus.len(), filtered_mg.base.q);
-            self.ensure_enough_queries(build_count, filtered_mg.base.q, "FilteredMimicGraph")?;
-
-            let graph_options = FilteredMimicGraphOptions {
-                base_options: filtered_mg.base,
-                threshold: filtered_mg.threshold,
-                labels: labels.to_vec(),
-                query_labels: query_labels[..build_count].to_vec(),
+            let is_tuned = filtered_mg_options_str.trim().eq_ignore_ascii_case("tuned");
+            let graph_options = if is_tuned {
+                FilteredMimicGraphOptions::tuned(
+                    self.corpus,
+                    self.queries,
+                    labels.to_vec(),
+                    query_labels.to_vec(),
+                )
+            } else {
+                let filtered_mg = parse_filtered_mimicgraph_options(filtered_mg_options_str)?;
+                FilteredMimicGraphOptions {
+                    base_options: filtered_mg.base,
+                    threshold: filtered_mg.threshold,
+                    labels: labels.to_vec(),
+                    query_labels: query_labels.to_vec(),
+                }
             };
 
+            validate_build_percent(graph_options.base_options.q)?;
+            let build_count =
+                build_count_from_percent(self.corpus.len(), graph_options.base_options.q);
+            self.ensure_enough_queries(
+                build_count,
+                graph_options.base_options.q,
+                "FilteredMimicGraph",
+            )?;
+
+            let graph_options = FilteredMimicGraphOptions {
+                query_labels: query_labels[..build_count].to_vec(),
+                ..graph_options
+            };
+
+            let options_label = if is_tuned {
+                "tuned".to_string()
+            } else {
+                format!("{:?}", graph_options.base_options)
+            };
             let graph_file = self.artifact_dir.join(format!(
-                "filtered-mimicgraph_{}_d={}_q={}_{:?}.bin",
-                self.dataset_name, self.num_corpus, build_count, graph_options.base_options
+                "filtered-mimicgraph_{}_d={}_q={}_{}.bin",
+                self.dataset_name, self.num_corpus, build_count, options_label
             ));
             let graph_meta = self.artifact_topology(&graph_file, || {
                 info!("Building FilteredMimicGraph...");

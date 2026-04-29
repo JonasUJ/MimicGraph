@@ -1,3 +1,4 @@
+use crate::gt::*;
 use hnsw_itu::{Distance, Index, Point};
 use min_max_heap::MinMaxHeap;
 use rayon::prelude::*;
@@ -29,6 +30,64 @@ pub struct MimicGraphOptions {
     pub vis: bool,
     /// Percentage of corpus used as build queries (0, 100]
     pub q: f32,
+}
+
+impl Default for MimicGraphOptions {
+    fn default() -> Self {
+        Self {
+            m: 32,
+            l: 300,
+            p: 100,
+            e: 32,
+            qk: 0,
+            qef: 100,
+            con: false,
+            vis: true,
+            q: 10.0,
+        }
+    }
+}
+
+impl MimicGraphOptions {
+    pub fn tuned<P>(data: &[P], queries: &[P]) -> MimicGraphOptions
+    where
+        P: Point + Sync,
+    {
+        info!("Auto tuning options...");
+
+        let k = 100;
+        let slots = 10;
+        let data_size = data.len().min(data.len().clamp(10000, 50_000));
+        let queries_size = queries
+            .len()
+            .min(((data_size * slots) as f32 / k as f32).round() as usize);
+
+        let data = &data[..data_size];
+        let queries = &queries[..queries_size];
+
+        let gt = compute_ground_truth(queries, data, k);
+
+        let (data_fraction, data_spread) = fraction_and_spread(&gt, data_size, k);
+        info!(data_fraction, data_spread, data_size, queries_size);
+
+        let options = MimicGraphOptions::from_fraction_and_spread(data_fraction, data_spread);
+        info!(
+            ?options.m, ?options.l, ?options.p,
+            "Tuned options",
+        );
+
+        options
+    }
+
+    pub fn from_fraction_and_spread(data_fraction: f32, data_spread: f32) -> MimicGraphOptions {
+        Self {
+            m: (100.0 - 100.0 * (0.3 * data_fraction + 0.7 * data_spread)).clamp(16.0, 80.0)
+                as usize,
+            l: (650.0 * (0.7 * data_fraction + 0.3 * data_spread)).clamp(50.0, 600.0) as usize,
+            p: (300.0 * (0.7 * data_fraction + 0.3 * data_spread)).clamp(100.0, 300.0) as usize,
+            ..Default::default()
+        }
+    }
 }
 
 pub trait Builder<P: Point + Send + Sync> {

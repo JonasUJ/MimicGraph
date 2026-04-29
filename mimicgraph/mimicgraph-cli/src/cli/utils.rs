@@ -1,6 +1,7 @@
 use anyhow::Result;
 use mimicgraph_core::labels::LabelSet;
 use mimicgraph_core::mimicgraph::MimicGraphOptions;
+use mimicgraph_core::vamana::FilteredMimicGraphOptions;
 use roargraph::RoarGraphOptions;
 use sprs::CsMat;
 use std::collections::HashMap;
@@ -147,17 +148,18 @@ pub struct ParsedFilteredVamanaOptions {
 
 pub fn parse_mimicgraph_options(input: &str) -> Result<MimicGraphOptions> {
     let mut map = parse_kv(input)?;
+    let d = MimicGraphOptions::default();
 
     let options = MimicGraphOptions {
-        m: take_usize(&mut map, "m", 32)?,
-        l: take_usize(&mut map, "l", 500)?,
-        p: take_usize(&mut map, "p", 100)?,
-        e: take_usize(&mut map, "e", 16)?,
-        qk: take_usize(&mut map, "qk", 0)?,
-        qef: take_usize(&mut map, "qef", 100)?,
-        con: take_bool(&mut map, "con", false)?,
-        vis: take_bool(&mut map, "vis", true)?,
-        q: take_f32(&mut map, "q", 10.0)?,
+        m: take_usize(&mut map, "m", d.m)?,
+        l: take_usize(&mut map, "l", d.l)?,
+        p: take_usize(&mut map, "p", d.p)?,
+        e: take_usize(&mut map, "e", d.e)?,
+        qk: take_usize(&mut map, "qk", d.qk)?,
+        qef: take_usize(&mut map, "qef", d.qef)?,
+        con: take_bool(&mut map, "con", d.con)?,
+        vis: take_bool(&mut map, "vis", d.vis)?,
+        q: take_f32(&mut map, "q", d.q)?,
     };
     ensure_empty(&map)?;
 
@@ -166,19 +168,21 @@ pub fn parse_mimicgraph_options(input: &str) -> Result<MimicGraphOptions> {
 
 pub fn parse_filtered_mimicgraph_options(input: &str) -> Result<ParsedFilteredMimicGraphOptions> {
     let mut map = parse_kv(input)?;
+    let d = FilteredMimicGraphOptions::default();
+    let base = d.base_options;
 
     let base = MimicGraphOptions {
-        m: take_usize(&mut map, "m", 32)?,
-        l: take_usize(&mut map, "l", 500)?,
-        p: take_usize(&mut map, "p", 100)?,
-        e: take_usize(&mut map, "e", 16)?,
-        qk: take_usize(&mut map, "qk", 0)?,
-        qef: take_usize(&mut map, "qef", 100)?,
-        con: take_bool(&mut map, "con", false)?,
-        vis: take_bool(&mut map, "vis", true)?,
-        q: take_f32(&mut map, "q", 10.0)?,
+        m: take_usize(&mut map, "m", base.m)?,
+        l: take_usize(&mut map, "l", base.l)?,
+        p: take_usize(&mut map, "p", base.p)?,
+        e: take_usize(&mut map, "e", base.e)?,
+        qk: take_usize(&mut map, "qk", base.qk)?,
+        qef: take_usize(&mut map, "qef", base.qef)?,
+        con: take_bool(&mut map, "con", base.con)?,
+        vis: take_bool(&mut map, "vis", base.vis)?,
+        q: take_f32(&mut map, "q", base.q)?,
     };
-    let threshold = take_usize(&mut map, "threshold", 1000)?;
+    let threshold = take_usize(&mut map, "threshold", d.threshold)?;
     ensure_empty(&map)?;
 
     Ok(ParsedFilteredMimicGraphOptions { base, threshold })

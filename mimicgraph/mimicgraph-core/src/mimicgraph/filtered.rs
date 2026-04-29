@@ -1,6 +1,7 @@
 use crate::bitset::Bitset;
 use crate::labels::{LabelSet, find_medoids};
 use crate::mimicgraph::{Builder, BuilderExt, MimicGraphOptions};
+use crate::vamana::FilteredMimicGraphOptions;
 use crate::vamana::filtered::{FilteredVamanaBuilder, FilteredVamanaOptions};
 use crate::vamana::index::{FilteredVamana, FilteredVamanaSearchOptions};
 use hnsw_itu::{Distance, Index, IndexBuilder, IndexVis, Point};
@@ -123,27 +124,6 @@ impl<P: Point> IndexVis<P> for FilteredMimicGraph<P> {
         }
 
         results.drain_asc().take(k).collect()
-    }
-}
-
-pub struct FilteredMimicGraphOptions {
-    pub base_options: MimicGraphOptions,
-    pub threshold: usize,
-    pub labels: Vec<LabelSet>,
-    pub query_labels: Vec<LabelSet>,
-}
-
-impl std::fmt::Debug for FilteredMimicGraphOptions {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("FilteredMimicGraphOptions")
-            .field("base_options", &self.base_options)
-            .field("threshold", &self.threshold)
-            .field("labels", &format_args!("<{} items>", self.labels.len()))
-            .field(
-                "query_labels",
-                &format_args!("<{} items>", self.query_labels.len()),
-            )
-            .finish()
     }
 }
 

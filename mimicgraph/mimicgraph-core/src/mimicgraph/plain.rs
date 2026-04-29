@@ -50,9 +50,7 @@ impl<P: Point + Send + Sync> Builder<P> for MimicGraphBuilder {
         &self.options
     }
 
-    fn build(mut self, queries: &[P], data: Vec<P>) -> Self::Index {
-        //self.options = self.auto_tune(&data, queries);
-
+    fn build(self, queries: &[P], data: Vec<P>) -> Self::Index {
         let query_graph = self.build_query_graph(&queries.iter().collect::<Vec<_>>());
         let estimated_gt = self.estimate_gt(&query_graph, &data.iter().collect::<Vec<_>>());
 
@@ -151,74 +149,5 @@ impl<P: Point + Send + Sync> Builder<P> for MimicGraphBuilder {
                 knn
             })
             .collect()
-    }
-}
-
-impl MimicGraphBuilder {
-    fn auto_tune<P>(&self, data: &[P], queries: &[P]) -> MimicGraphOptions
-    where
-        P: Point + Sync,
-    {
-        info!("Auto tuning options...");
-
-        let mut options = self.options.clone();
-
-        let k = 100;
-        let slots = 10;
-        let data_size = data.len().min(data.len().clamp(10000, 100_000));
-        let queries_size = queries
-            .len()
-            .min(((data_size * slots) as f32 / k as f32).round() as usize);
-
-        let data = &data[..data_size];
-        let queries = &queries[..queries_size];
-
-        let gt = compute_ground_truth(queries, data, k);
-
-        let mut counts = vec![0usize; data_size];
-
-        for knn in gt.iter() {
-            for (i, _) in knn {
-                counts[*i] += 1;
-            }
-        }
-
-        let nonzero_count = counts.iter().filter(|&&i| i != 0).count();
-
-        // Fraction of data points that appear in the ground truth at least once
-        let data_fraction = nonzero_count as f32 / data_size as f32;
-
-        let data_spread = {
-            let total = counts.iter().sum::<usize>() as f32;
-            let sum_sq: f32 = counts
-                .iter()
-                .filter(|&&c| c > 0)
-                .map(|&c| {
-                    let p = c as f32 / total;
-                    p * p
-                })
-                .sum();
-
-            let effective_support = if sum_sq > 0.0 { 1.0 / sum_sq } else { 0.0 };
-            let min_support = k.min(data_size) as f32;
-            let max_support = data_size as f32;
-
-            ((effective_support - min_support) / (max_support - min_support)).clamp(0.0, 1.0)
-        };
-
-        info!(data_fraction, data_spread, data_size, queries_size);
-
-        options.m = (40.0 * data_fraction + 2.0 / data_spread).clamp(12.0, 64.0) as usize;
-        options.e = (options.m as f32 / (2.0 + 2.0 * data_fraction)).max(1.0) as usize;
-        options.l = (500.0 * data_fraction * data_spread).max(50.0) as usize;
-        options.p = options.l.min(200);
-        options.qef = (100.0 - 50.0 * data_fraction * data_spread).round() as usize;
-
-        info!(
-            "Tuned options: m={}, e={}, l={}, p={}, qef={}",
-            options.m, options.e, options.l, options.p, options.qef
-        );
-
-        options
     }
 }
