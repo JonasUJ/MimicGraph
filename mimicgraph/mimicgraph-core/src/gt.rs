@@ -1,9 +1,7 @@
 use crate::labels;
 use crate::labels::LabelSet;
-use crate::mimicgraph::MimicGraphOptions;
 use hnsw_itu::{Distance, MinK, Point};
 use rayon::prelude::*;
-use tracing::info;
 
 pub fn compute_ground_truth<P: Point + Sync>(
     queries: &[P],

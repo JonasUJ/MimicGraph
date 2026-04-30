@@ -1,4 +1,3 @@
-use crate::gt::compute_ground_truth;
 use crate::mimicgraph::{Builder, BuilderExt, MimicGraphOptions};
 use hnsw_itu::{Distance, Index, IndexBuilder, IndexVis, NSW, Point};
 use hnsw_itu::{NSWBuilder, NSWOptions};

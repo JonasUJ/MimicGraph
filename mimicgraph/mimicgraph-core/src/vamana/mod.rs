@@ -56,7 +56,7 @@ impl FilteredMimicGraphOptions {
 
         info!(data_fraction, data_spread, data_size, queries_size);
 
-        let options = MimicGraphOptions::from_fraction_and_spread(data_fraction, data_spread);
+        let options = Self::from_fraction_and_spread(data_fraction, data_spread);
 
         info!(
             ?options.m, ?options.l, ?options.p,
@@ -67,6 +67,18 @@ impl FilteredMimicGraphOptions {
             base_options: options,
             labels,
             query_labels,
+            ..Default::default()
+        }
+    }
+
+    fn from_fraction_and_spread(data_fraction: f32, data_spread: f32) -> MimicGraphOptions {
+        MimicGraphOptions {
+            m: (100.0 - 80.0 * (0.7 * data_fraction + 0.3 * data_spread)).clamp(24.0, 80.0)
+                as usize,
+            l: (-200.0 + 900.0 * (0.7 * data_fraction + 0.3 * data_spread)).clamp(100.0, 700.0)
+                as usize,
+            p: (-200.0 + 900.0 * (0.7 * data_fraction + 0.3 * data_spread)).clamp(100.0, 700.0)
+                as usize,
             ..Default::default()
         }
     }
