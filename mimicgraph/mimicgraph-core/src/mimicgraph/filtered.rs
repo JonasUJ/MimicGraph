@@ -1,7 +1,6 @@
 use crate::bitset::Bitset;
 use crate::labels::{LabelSet, find_medoids};
-use crate::mimicgraph::{Builder, BuilderExt, MimicGraphOptions};
-use crate::vamana::FilteredMimicGraphOptions;
+use crate::mimicgraph::{Builder, BuilderExt, FilteredMimicGraphOptions, MimicGraphOptions};
 use crate::vamana::filtered::{FilteredVamanaBuilder, FilteredVamanaOptions};
 use crate::vamana::index::{FilteredVamana, FilteredVamanaSearchOptions};
 use hnsw_itu::{Distance, Index, IndexBuilder, IndexVis, Point};

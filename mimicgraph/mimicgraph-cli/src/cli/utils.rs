@@ -1,7 +1,6 @@
 use anyhow::Result;
 use mimicgraph_core::labels::LabelSet;
-use mimicgraph_core::mimicgraph::MimicGraphOptions;
-use mimicgraph_core::vamana::FilteredMimicGraphOptions;
+use mimicgraph_core::mimicgraph::{FilteredMimicGraphOptions, MimicGraphOptions};
 use roargraph::RoarGraphOptions;
 use sprs::CsMat;
 use std::collections::HashMap;
