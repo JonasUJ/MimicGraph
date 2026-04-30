@@ -70,7 +70,8 @@ impl MimicGraphOptions {
         let (data_fraction, data_spread) = fraction_and_spread(&gt, data_size, k);
         info!(data_fraction, data_spread, data_size, queries_size);
 
-        let options = Self::from_fraction_and_spread(data_fraction, data_spread);
+        let mut options = Self::from_fraction_and_spread(data_fraction, data_spread);
+        options.q = options.q.min(queries.len() as f32 / data.len() as f32 * 100.0);
         info!(
             ?options.m, ?options.l, ?options.p,
             "Tuned options",
