@@ -58,7 +58,7 @@ impl MimicGraphOptions {
 
         let k = 100;
         let slots = 10;
-        let data_size = data.len().min(data.len().clamp(10000, 50_000));
+        let data_size = data.len().min(data.len().clamp(10_000, 20_000));
         let queries_size = queries
             .len()
             .min(((data_size * slots) as f32 / k as f32).round() as usize);
@@ -125,7 +125,7 @@ impl FilteredMimicGraphOptions {
 
         let k = 100;
         let slots = 10;
-        let data_size = data.len().min(data.len().clamp(10000, 100_000));
+        let data_size = data.len().min(data.len().clamp(10_000, 20_000));
         let queries_size = queries
             .len()
             .min(((data_size * slots) as f32 / k as f32).round() as usize);
