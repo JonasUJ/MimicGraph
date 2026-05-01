@@ -76,7 +76,7 @@ impl<P: Point> Index<P> for FilteredTestIndex<P> {
 pub fn evaluate(
     dataset_name: &str,
     indices: Vec<(&str, String, TestIndex<Row<f32>>, Duration)>,
-    params: &[(usize, usize)],
+    params: &[(usize, usize, usize)],
     eval_queries: &[Row<f32>],
     ground_truth: &[Vec<(usize, f32)>],
     format: OutputFormat,
@@ -94,7 +94,7 @@ pub fn evaluate(
     for (name, options, index, build_time) in indices {
         let mut index_recalls = Vec::new();
         let mut index_spqs = Vec::new();
-        for &(k, ef) in params {
+        for &(k, ef, _) in params {
             let (recall, spq) = evaluate_recall(eval_queries, ground_truth, k, &|_qi, query, k| {
                 index
                     .search(query, k, &ef)
@@ -113,7 +113,13 @@ pub fn evaluate(
 
     let header: Vec<String> = params
         .iter()
-        .map(|(k, ef)| format!("k={k},ef={ef}"))
+        .map(|(k, ef, s)| {
+            if *s > 0 {
+                format!("k={k},ef={ef},s={s}")
+            } else {
+                format!("k={k},ef={ef}")
+            }
+        })
         .collect();
     print_evaluation_results(
         dataset_name,
@@ -129,7 +135,7 @@ pub fn evaluate(
 pub fn evaluate_filtered(
     dataset_name: &str,
     indices: Vec<(&str, String, FilteredTestIndex<Row<f32>>, Duration)>,
-    params: &[(usize, usize)],
+    params: &[(usize, usize, usize)],
     eval_queries: &[Row<f32>],
     ground_truth: &[Vec<(usize, f32)>],
     query_labels: &[LabelSet],
@@ -148,12 +154,12 @@ pub fn evaluate_filtered(
     for (name, options, index, build_time) in indices {
         let mut index_recalls = Vec::new();
         let mut index_spqs = Vec::new();
-        for &(k, ef) in params {
+        for &(k, ef, scan_limit) in params {
             let (recall, spq) = evaluate_recall(eval_queries, ground_truth, k, &|qi, query, k| {
                 let options = FilteredMimicGraphSearchOptions {
                     ef,
                     labels: &query_labels[qi],
-                    scan_limit: 0,
+                    scan_limit,
                 };
                 index
                     .search(query, k, &options)
@@ -172,7 +178,13 @@ pub fn evaluate_filtered(
 
     let header: Vec<String> = params
         .iter()
-        .map(|(k, ef)| format!("k={k},ef={ef}"))
+        .map(|(k, ef, s)| {
+            if *s > 0 {
+                format!("k={k},ef={ef},s={s}")
+            } else {
+                format!("k={k},ef={ef}")
+            }
+        })
         .collect();
     print_evaluation_results(
         dataset_name,
@@ -206,22 +218,33 @@ fn print_table(
     spqs: &[(&str, Vec<Duration>)],
     build_times: &[(&str, Duration)],
 ) {
+    let col_width = header_labels
+        .iter()
+        .map(|l| l.len())
+        .max()
+        .unwrap_or(15)
+        .max(15)
+        + 2;
     let header: String = header_labels
         .iter()
-        .map(|l| format!("{:>15}", l))
+        .map(|l| format!("{:>width$}", l, width = col_width))
         .collect::<Vec<_>>()
         .join("");
     println!(" {:>12}  {:>15} {}", "", "Build Time (BT)", header);
-    print_rows("Recall", recalls, build_times, |r| format!("{:>15.4}", r));
+    print_rows("Recall", recalls, build_times, |r| {
+        format!("{:>width$.4}", r, width = col_width)
+    });
     print_rows("SPQ", spqs, build_times, |s| {
-        format!("{:>15}", fmt_duration(s))
+        format!("{:>width$}", fmt_duration(s), width = col_width)
     });
 
     let qps: Vec<(&str, Vec<f64>)> = spqs
         .iter()
         .map(|(name, vals)| (*name, vals.iter().map(|s| 1.0 / s.as_secs_f64()).collect()))
         .collect();
-    print_rows("QPS", &qps, build_times, |r| format!("{:>15.1}", r));
+    print_rows("QPS", &qps, build_times, |r| {
+        format!("{:>width$.1}", r, width = col_width)
+    });
 }
 
 fn print_csv(

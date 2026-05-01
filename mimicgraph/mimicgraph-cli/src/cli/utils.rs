@@ -43,16 +43,25 @@ pub fn require_labels(
     })
 }
 
-pub fn parse_search_options(input: &str) -> Result<Vec<(usize, usize)>> {
+pub fn parse_search_options(input: &str) -> Result<Vec<(usize, usize, usize)>> {
     let mut options = Vec::new();
 
     for entry in input.split(',').filter(|s| !s.trim().is_empty()) {
         let trimmed = entry.trim();
-        let Some((k, ef)) = trimmed.split_once(':') else {
-            anyhow::bail!("invalid --search-options entry, expected k:ef");
+        let parts: Vec<&str> = trimmed.splitn(3, ':').collect();
+        if parts.len() < 2 {
+            anyhow::bail!("invalid --search-options entry, expected k:ef or k:ef:s");
+        }
+
+        let k: usize = parts[0].trim().parse()?;
+        let ef: usize = parts[1].trim().parse()?;
+        let scan_limit: usize = if parts.len() >= 3 {
+            parts[2].trim().parse()?
+        } else {
+            0
         };
 
-        options.push((k.trim().parse()?, ef.trim().parse()?));
+        options.push((k, ef, scan_limit));
     }
 
     if options.is_empty() {
