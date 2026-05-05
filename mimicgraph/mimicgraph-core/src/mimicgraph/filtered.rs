@@ -57,7 +57,7 @@ impl<P: Point> IndexVis<P> for FilteredMimicGraph<P> {
         options: &Self::Options<'_>,
         vis: &mut HashSet<Distance<'a, P>>,
     ) -> Vec<Distance<'a, P>> {
-        let vamana_options = FilteredVamanaSearchOptions {
+        let mut vamana_options = FilteredVamanaSearchOptions {
             ef: options.ef,
             labels: options.labels,
         };
@@ -112,7 +112,7 @@ impl<P: Point> IndexVis<P> for FilteredMimicGraph<P> {
         }
 
         // Search for labels via graph
-        // We're searching for all query labels, even the ones we scanned.
+        vamana_options.labels = &search_labels;
         let search_results = self.inner.search_vis(query, k, &vamana_options, vis);
 
         // Merge scan and search results, skipping duplicates
