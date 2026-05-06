@@ -1,15 +1,14 @@
-use crate::artifacts::{Topology, WithMetadata, build_and_save_topology, load_or_create_topology};
+use crate::artifacts::{Topology, WithMetadata, build_and_save_index, load_index};
 use crate::cli::utils::*;
 use crate::eval::{FilteredTestIndex, TestIndex, compute_ground_truth};
 use anyhow::Result;
-use hnsw_itu::{HNSW, HNSWBuilder, IndexBuilder};
+use hnsw_itu::{HNSWBuilder, IndexBuilder};
 use mimicgraph_core::labels::LabelSet;
-use mimicgraph_core::mimicgraph::filtered::{FilteredMimicGraph, FilteredMimicGraphBuilder};
+use mimicgraph_core::mimicgraph::filtered::FilteredMimicGraphBuilder;
 use mimicgraph_core::mimicgraph::plain::MimicGraphBuilder;
 use mimicgraph_core::mimicgraph::{Builder, FilteredMimicGraphOptions, MimicGraphOptions};
 use mimicgraph_core::vamana::filtered::{FilteredVamanaBuilder, FilteredVamanaOptions};
-use mimicgraph_core::vamana::index::FilteredVamana;
-use roargraph::{RoarGraph, Row};
+use roargraph::Row;
 use std::path::Path;
 use std::time::Duration;
 use tracing::{error, info};
@@ -29,22 +28,28 @@ pub struct BuildContext<'a> {
     pub dataset_name: &'a str,
     pub dataset_path: &'a Path,
     pub num_corpus: usize,
-    pub corpus: &'a [Row<f32>],
+    pub corpus: Vec<Row<f32>>,
     pub queries: &'a [Row<f32>],
     pub force_recreate: bool,
     pub index_config: IndexConfig,
 }
 
-impl<'a> BuildContext<'a> {
-    fn artifact_topology<I: Topology>(
+impl BuildContext<'_> {
+    /// Load or build an index artifact.
+    /// When loading from disk the corpus is moved (no clone).
+    /// When building, the corpus is cloned for the builder; the original is
+    /// moved into from_topology for reconstruction.
+    fn load_or_build<I: Topology>(
         &self,
         path: &Path,
-        create: impl FnOnce() -> I,
-    ) -> WithMetadata<I::Compact> {
-        if self.force_recreate {
-            build_and_save_topology(path, self.dataset_path, create)
+        corpus: Vec<Row<f32>>,
+        create: impl FnOnce(Vec<Row<f32>>) -> I,
+    ) -> WithMetadata<I> {
+        if !self.force_recreate && path.exists() {
+            load_index(path, corpus)
         } else {
-            load_or_create_topology(path, self.dataset_path, create)
+            let build_corpus = corpus.clone();
+            build_and_save_index(path, self.dataset_path, corpus, || create(build_corpus))
         }
     }
 
@@ -62,18 +67,37 @@ impl<'a> BuildContext<'a> {
         Ok(())
     }
 
+    /// Take the corpus if this is the last index to build, otherwise clone.
+    fn take_or_clone_corpus(&mut self, is_last: bool) -> Vec<Row<f32>> {
+        if is_last {
+            std::mem::take(&mut self.corpus)
+        } else {
+            self.corpus.clone()
+        }
+    }
+
     pub fn build_unfiltered(
-        &self,
+        mut self,
         mg_options_str: &str,
         hnsw_options_str: &str,
         rg_options_str: &str,
     ) -> Result<Vec<(&'static str, String, TestIndex<Row<f32>>, Duration)>> {
         let mut indices = Vec::new();
 
+        // Count how many indices will be built to know when to move vs clone
+        let remaining = [
+            self.index_config.build_mimicgraph,
+            self.index_config.build_hnsw,
+            self.index_config.build_roargraph,
+        ];
+        let total = remaining.iter().filter(|&&b| b).count();
+        let mut built = 0;
+
         if self.index_config.build_mimicgraph {
+            built += 1;
             let is_tuned = mg_options_str.trim().eq_ignore_ascii_case("tuned");
             let mg_options = if is_tuned {
-                MimicGraphOptions::tuned(self.corpus, self.queries)
+                MimicGraphOptions::tuned(&self.corpus, self.queries)
             } else {
                 parse_mimicgraph_options(mg_options_str)?
             };
@@ -91,33 +115,23 @@ impl<'a> BuildContext<'a> {
                 "mimicgraph_{}_d={}_q={}_{}.bin",
                 self.dataset_name, self.num_corpus, build_count, options_label
             ));
-            let graph_meta = self.artifact_topology(&graph_file, || {
+            let queries: Vec<_> = self.queries.iter().take(build_count).cloned().collect();
+            let corpus = self.take_or_clone_corpus(built == total);
+            let meta = self.load_or_build(&graph_file, corpus, |c| {
                 info!("Building MimicGraph...");
-                MimicGraphBuilder::new(mg_options).build(
-                    &self
-                        .queries
-                        .iter()
-                        .take(build_count)
-                        .cloned()
-                        .collect::<Vec<_>>(),
-                    self.corpus.to_vec(),
-                )
+                MimicGraphBuilder::new(mg_options).build(&queries, c)
             });
-
-            let loaded = <mimicgraph_core::mimicgraph::plain::MimicGraph<Row<f32>> as Topology>::from_topology(
-                graph_meta.value,
-                self.corpus.to_vec(),
-            );
 
             indices.push((
                 "MimicGraph",
                 mg_options_str.to_string(),
-                TestIndex::MimicGraph(loaded),
-                graph_meta.build_time,
+                TestIndex::MimicGraph(meta.value),
+                meta.build_time,
             ));
         }
 
         if self.index_config.build_hnsw {
+            built += 1;
             let (ef_construction, connections, max_connections) =
                 parse_hnsw_options(hnsw_options_str)?;
             let hnsw_options = hnsw_itu::NSWOptions {
@@ -130,20 +144,19 @@ impl<'a> BuildContext<'a> {
                 "hnsw_{}_d={}_{:?}.bin",
                 self.dataset_name, self.num_corpus, hnsw_options
             ));
-            let hnsw_meta = self.artifact_topology(&hnsw_file, || {
+            let corpus = self.take_or_clone_corpus(built == total);
+            let meta = self.load_or_build(&hnsw_file, corpus, |c| {
                 info!("Building HNSW...");
                 let mut builder = HNSWBuilder::new(hnsw_options);
-                builder.extend_parallel(self.corpus.iter().cloned());
+                builder.extend_parallel(c);
                 builder.build()
             });
-
-            let loaded = HNSW::from_topology(hnsw_meta.value, self.corpus.to_vec());
 
             indices.push((
                 "HNSW",
                 hnsw_options_str.to_string(),
-                TestIndex::Hnsw(loaded),
-                hnsw_meta.build_time,
+                TestIndex::Hnsw(meta.value),
+                meta.build_time,
             ));
         }
 
@@ -161,18 +174,20 @@ impl<'a> BuildContext<'a> {
             let build_gt = compute_ground_truth(
                 path_str(&build_gt_file)?,
                 &self.queries[..build_count],
-                self.corpus,
+                &self.corpus,
             );
 
             let rg_file = self.artifact_dir.join(format!(
                 "roargraph_{}_d={}_q={}_{:?}.bin",
                 self.dataset_name, self.num_corpus, build_count, rg_options
             ));
-            let rg_meta = self.artifact_topology(&rg_file, || {
+            let queries: Vec<_> = self.queries.iter().take(build_count).cloned().collect();
+            let corpus = std::mem::take(&mut self.corpus); // always last
+            let meta = self.load_or_build(&rg_file, corpus, |c| {
                 info!("Building RoarGraph (build count: {build_count})...");
                 roargraph::RoarGraphBuilder::new(rg_options).build(
-                    self.queries.iter().take(build_count).cloned().collect(),
-                    self.corpus.to_vec(),
+                    queries,
+                    c,
                     build_gt
                         .value
                         .iter()
@@ -183,13 +198,11 @@ impl<'a> BuildContext<'a> {
                 )
             });
 
-            let loaded = RoarGraph::from_topology(rg_meta.value, self.corpus.to_vec());
-
             indices.push((
                 "RoarGraph",
                 rg_options_str.to_string(),
-                TestIndex::RoarGraph(loaded),
-                rg_meta.build_time + build_gt.build_time,
+                TestIndex::RoarGraph(meta.value),
+                meta.build_time + build_gt.build_time,
             ));
         }
 
@@ -197,7 +210,7 @@ impl<'a> BuildContext<'a> {
     }
 
     pub fn build_filtered(
-        &self,
+        mut self,
         labels: &[LabelSet],
         query_labels: &[LabelSet],
         filtered_mg_options_str: &str,
@@ -205,11 +218,21 @@ impl<'a> BuildContext<'a> {
     ) -> Result<Vec<(&'static str, String, FilteredTestIndex<Row<f32>>, Duration)>> {
         let mut indices = Vec::new();
 
+        let total = [
+            self.index_config.build_filtered_mimicgraph,
+            self.index_config.build_filtered_vamana,
+        ]
+        .iter()
+        .filter(|&&b| b)
+        .count();
+        let mut built = 0;
+
         if self.index_config.build_filtered_mimicgraph {
+            built += 1;
             let is_tuned = filtered_mg_options_str.trim().eq_ignore_ascii_case("tuned");
             let graph_options = if is_tuned {
                 FilteredMimicGraphOptions::tuned(
-                    self.corpus,
+                    &self.corpus,
                     self.queries,
                     labels.to_vec(),
                     query_labels.to_vec(),
@@ -247,26 +270,18 @@ impl<'a> BuildContext<'a> {
                 "filtered-mimicgraph_{}_d={}_q={}_{}.bin",
                 self.dataset_name, self.num_corpus, build_count, options_label
             ));
-            let graph_meta = self.artifact_topology(&graph_file, || {
+            let queries: Vec<_> = self.queries.iter().take(build_count).cloned().collect();
+            let corpus = self.take_or_clone_corpus(built == total);
+            let meta = self.load_or_build(&graph_file, corpus, |c| {
                 info!("Building FilteredMimicGraph...");
-                FilteredMimicGraphBuilder::new(graph_options).build(
-                    &self
-                        .queries
-                        .iter()
-                        .take(build_count)
-                        .cloned()
-                        .collect::<Vec<_>>(),
-                    self.corpus.to_vec(),
-                )
+                FilteredMimicGraphBuilder::new(graph_options).build(&queries, c)
             });
-
-            let loaded = FilteredMimicGraph::from_topology(graph_meta.value, self.corpus.to_vec());
 
             indices.push((
                 "F-MimicGraph",
                 filtered_mg_options_str.to_string(),
-                FilteredTestIndex::MimicGraph(loaded),
-                graph_meta.build_time,
+                FilteredTestIndex::MimicGraph(meta.value),
+                meta.build_time,
             ));
         }
 
@@ -284,20 +299,19 @@ impl<'a> BuildContext<'a> {
                 "filtered-vamana_{}_d={}_{:?}.bin",
                 self.dataset_name, self.num_corpus, vamana_options
             ));
-            let vamana_meta = self.artifact_topology(&vamana_file, || {
+            let corpus = std::mem::take(&mut self.corpus); // always last
+            let meta = self.load_or_build(&vamana_file, corpus, |c| {
                 info!("Building FilteredVamana...");
                 let mut builder = FilteredVamanaBuilder::new(vamana_options);
-                builder.extend(self.corpus.iter().cloned());
+                builder.extend(c.into_iter());
                 builder.build()
             });
-
-            let loaded = FilteredVamana::from_topology(vamana_meta.value, self.corpus.to_vec());
 
             indices.push((
                 "F-Vamana",
                 vamana_options_str.to_string(),
-                FilteredTestIndex::Vamana(loaded),
-                vamana_meta.build_time,
+                FilteredTestIndex::Vamana(meta.value),
+                meta.build_time,
             ));
         }
 

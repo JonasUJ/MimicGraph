@@ -124,21 +124,12 @@ impl EvalCommand {
 
         let params = parse_search_options(&self.search_options)?;
 
-        let ctx = BuildContext {
-            artifact_dir: &self.artifact_dir,
-            dataset_name,
-            dataset_path: path,
-            num_corpus,
-            corpus: &corpus,
-            queries: &queries,
-            force_recreate: self.force_recreate,
-            index_config: IndexConfig {
-                build_mimicgraph: self.build_mimicgraph,
-                build_hnsw: self.build_hnsw,
-                build_roargraph: self.build_roargraph,
-                build_filtered_mimicgraph: self.build_filtered_mimicgraph,
-                build_filtered_vamana: self.build_filtered_vamana,
-            },
+        let index_config = IndexConfig {
+            build_mimicgraph: self.build_mimicgraph,
+            build_hnsw: self.build_hnsw,
+            build_roargraph: self.build_roargraph,
+            build_filtered_mimicgraph: self.build_filtered_mimicgraph,
+            build_filtered_vamana: self.build_filtered_vamana,
         };
 
         match FilteredMode::resolve(&self.dataset_mode, &h5file, num_corpus, queries.len())? {
@@ -159,6 +150,17 @@ impl EvalCommand {
                     &labels,
                     eval_query_labels,
                 );
+
+                let ctx = BuildContext {
+                    artifact_dir: &self.artifact_dir,
+                    dataset_name,
+                    dataset_path: path,
+                    num_corpus,
+                    corpus,
+                    queries: &queries,
+                    force_recreate: self.force_recreate,
+                    index_config,
+                };
 
                 let indices = ctx.build_filtered(
                     &labels,
@@ -184,6 +186,17 @@ impl EvalCommand {
                 ));
                 let ground_truth =
                     compute_ground_truth(path_str(&gt_file)?, &queries[eval_start..], &corpus);
+
+                let ctx = BuildContext {
+                    artifact_dir: &self.artifact_dir,
+                    dataset_name,
+                    dataset_path: path,
+                    num_corpus,
+                    corpus,
+                    queries: &queries,
+                    force_recreate: self.force_recreate,
+                    index_config,
+                };
 
                 let indices = ctx.build_unfiltered(
                     &self.mimicgraph_options,

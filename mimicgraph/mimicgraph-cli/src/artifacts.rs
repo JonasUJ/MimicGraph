@@ -213,11 +213,25 @@ pub fn build_and_save<T: Serialize + DeserializeOwned>(
     result
 }
 
-pub fn build_and_save_topology<I: Topology>(
+/// Load an existing topology artifact and reconstruct the full index.
+pub fn load_index<I: Topology>(path: &Path, corpus: Vec<Row<f32>>) -> WithMetadata<I> {
+    info!("Reading {path:?}");
+    let reader = BufReader::new(File::open(path).unwrap());
+    let meta: WithMetadata<I::Compact> = deserialize_from(reader).unwrap();
+    WithMetadata::new(
+        I::from_topology(meta.value, corpus),
+        meta.build_time,
+        meta.dataset_path,
+    )
+}
+
+/// Build an index, save it as a topology artifact, then reconstruct the full index.
+pub fn build_and_save_index<I: Topology>(
     path: &Path,
     dataset_path: &Path,
+    corpus: Vec<Row<f32>>,
     create: impl FnOnce() -> I,
-) -> WithMetadata<I::Compact> {
+) -> WithMetadata<I> {
     info!("Creating {path:?}");
     let start = Instant::now();
     let index = create();
@@ -227,24 +241,14 @@ pub fn build_and_save_topology<I: Topology>(
     let compact = index.into_topology();
 
     let writer = BufWriter::new(File::create(path).unwrap());
-    let result = WithMetadata::new(compact, elapsed, Some(dataset_path.to_path_buf()));
-    serialize_into(writer, &result).unwrap();
+    let saved = WithMetadata::new(compact, elapsed, Some(dataset_path.to_path_buf()));
+    serialize_into(writer, &saved).unwrap();
 
-    result
-}
-
-pub fn load_or_create_topology<I: Topology>(
-    path: &Path,
-    dataset_path: &Path,
-    create: impl FnOnce() -> I,
-) -> WithMetadata<I::Compact> {
-    if path.exists() {
-        info!("Reading {path:?}");
-        let reader = BufReader::new(File::open(path).unwrap());
-        deserialize_from(reader).unwrap()
-    } else {
-        build_and_save_topology(path, dataset_path, create)
-    }
+    WithMetadata::new(
+        I::from_topology(saved.value, corpus),
+        elapsed,
+        Some(dataset_path.to_path_buf()),
+    )
 }
 
 #[derive(Debug)]

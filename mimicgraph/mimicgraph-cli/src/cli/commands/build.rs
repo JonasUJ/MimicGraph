@@ -106,7 +106,7 @@ impl BuildCommand {
             dataset_name,
             dataset_path: path,
             num_corpus,
-            corpus: &corpus,
+            corpus,
             queries: &queries,
             force_recreate: self.force_recreate,
             index_config: IndexConfig {
