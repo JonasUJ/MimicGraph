@@ -2,26 +2,9 @@ use anyhow::Result;
 use mimicgraph_core::labels::LabelSet;
 use mimicgraph_core::mimicgraph::{FilteredMimicGraphOptions, MimicGraphOptions};
 use roargraph::RoarGraphOptions;
-use sprs::CsMat;
 use std::collections::HashMap;
 use std::path::Path;
 
-pub fn csmat_to_map(mat: CsMat<usize>, count: usize) -> Vec<LabelSet> {
-    let mut map = Vec::with_capacity(mat.rows());
-    let indices = mat.indices();
-
-    for window in mat.proper_indptr().windows(2).take(count) {
-        let mut set = LabelSet::new();
-
-        for &idx in &indices[window[0]..window[1]] {
-            set.insert(idx);
-        }
-
-        map.push(set);
-    }
-
-    map
-}
 
 pub fn dataset_file_name(path: &Path) -> Result<&str> {
     path.file_name()

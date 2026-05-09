@@ -87,7 +87,7 @@ impl<P: Point> IndexVis<P> for FilteredMimicGraph<P> {
         let mut seen = Bitset::new();
 
         // Union all scannable posting lists so each point is visited once
-        let mut scan_points = LabelSet::new();
+        let mut scan_points = Bitset::new();
         for label in scan_labels.iter() {
             if let Some(points) = self.inverted_index.get(label) {
                 scan_points |= points;

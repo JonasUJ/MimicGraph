@@ -3,3 +3,4 @@ pub mod gt;
 pub mod labels;
 pub mod mimicgraph;
 pub mod vamana;
+pub mod vecset;

@@ -19,7 +19,7 @@ use tracing::info;
 pub trait Topology: Sized {
     type Compact: Serialize + DeserializeOwned;
 
-    fn into_topology(self) -> Self::Compact;
+    fn into_topology(self) -> (Self::Compact, Vec<Row<f32>>);
 
     fn from_topology(compact: Self::Compact, data: Vec<Row<f32>>) -> Self;
 }
@@ -33,12 +33,12 @@ pub struct MimicGraphTopology {
 impl Topology for MimicGraph<Row<f32>> {
     type Compact = MimicGraphTopology;
 
-    fn into_topology(self) -> MimicGraphTopology {
-        let (_, adj_lists) = self.graph.consume();
-        MimicGraphTopology {
+    fn into_topology(self) -> (MimicGraphTopology, Vec<Row<f32>>) {
+        let (nodes, adj_lists) = self.graph.consume();
+        (MimicGraphTopology {
             entry: self.entry,
             adj_lists,
-        }
+        }, nodes)
     }
 
     fn from_topology(compact: MimicGraphTopology, data: Vec<Row<f32>>) -> Self {
@@ -61,10 +61,10 @@ pub struct RoarGraphTopology {
 impl Topology for RoarGraph<Row<f32>> {
     type Compact = RoarGraphTopology;
 
-    fn into_topology(self) -> RoarGraphTopology {
+    fn into_topology(self) -> (RoarGraphTopology, Vec<Row<f32>>) {
         let medoid = self.medoid();
-        let (_, adj_lists) = self.graph.consume();
-        RoarGraphTopology { medoid, adj_lists }
+        let (nodes, adj_lists) = self.graph.consume();
+        (RoarGraphTopology { medoid, adj_lists }, nodes)
     }
 
     fn from_topology(compact: RoarGraphTopology, data: Vec<Row<f32>>) -> Self {
@@ -88,7 +88,7 @@ pub struct HNSWTopology {
 impl Topology for HNSW<Row<f32>> {
     type Compact = HNSWTopology;
 
-    fn into_topology(self) -> HNSWTopology {
+    fn into_topology(self) -> (HNSWTopology, Vec<Row<f32>>) {
         let (layers, base, ep) = self.consume();
 
         let layer_adj_lists = layers
@@ -100,13 +100,13 @@ impl Topology for HNSW<Row<f32>> {
             })
             .collect();
 
-        let (_, base_adj_lists) = base.consume();
+        let (nodes, base_adj_lists) = base.consume();
 
-        HNSWTopology {
+        (HNSWTopology {
             layer_adj_lists,
             base_adj_lists,
             ep,
-        }
+        }, nodes)
     }
 
     fn from_topology(compact: HNSWTopology, data: Vec<Row<f32>>) -> Self {
@@ -138,13 +138,13 @@ pub struct FilteredVamanaTopology {
 impl Topology for FilteredVamana<Row<f32>> {
     type Compact = FilteredVamanaTopology;
 
-    fn into_topology(self) -> FilteredVamanaTopology {
-        let (_, adj_lists) = self.graph.consume();
-        FilteredVamanaTopology {
+    fn into_topology(self) -> (FilteredVamanaTopology, Vec<Row<f32>>) {
+        let (nodes, adj_lists) = self.graph.consume();
+        (FilteredVamanaTopology {
             start_nodes: self.start_nodes,
             adj_lists,
             labels: self.labels,
-        }
+        }, nodes)
     }
 
     fn from_topology(compact: FilteredVamanaTopology, data: Vec<Row<f32>>) -> Self {
@@ -168,11 +168,13 @@ pub struct FilteredMimicGraphTopology {
 impl Topology for FilteredMimicGraph<Row<f32>> {
     type Compact = FilteredMimicGraphTopology;
 
-    fn into_topology(self) -> FilteredMimicGraphTopology {
-        FilteredMimicGraphTopology {
-            inner: self.inner.into_topology(),
-            inverted_index: self.inverted_index,
-        }
+    fn into_topology(self) -> (FilteredMimicGraphTopology, Vec<Row<f32>>) {
+        let inverted_index = self.inverted_index;
+        let (inner, nodes) = self.inner.into_topology();
+        (FilteredMimicGraphTopology {
+            inner,
+            inverted_index,
+        }, nodes)
     }
 
     fn from_topology(compact: FilteredMimicGraphTopology, data: Vec<Row<f32>>) -> Self {
@@ -229,7 +231,6 @@ pub fn load_index<I: Topology>(path: &Path, corpus: Vec<Row<f32>>) -> WithMetada
 pub fn build_and_save_index<I: Topology>(
     path: &Path,
     dataset_path: &Path,
-    corpus: Vec<Row<f32>>,
     create: impl FnOnce() -> I,
 ) -> WithMetadata<I> {
     info!("Creating {path:?}");
@@ -238,7 +239,7 @@ pub fn build_and_save_index<I: Topology>(
     let elapsed = start.elapsed();
     info!("Build time: {:?}", elapsed);
 
-    let compact = index.into_topology();
+    let (compact, corpus) = index.into_topology();
 
     let writer = BufWriter::new(File::create(path).unwrap());
     let saved = WithMetadata::new(compact, elapsed, Some(dataset_path.to_path_buf()));

@@ -36,9 +36,6 @@ pub struct BuildContext<'a> {
 
 impl BuildContext<'_> {
     /// Load or build an index artifact.
-    /// When loading from disk the corpus is moved (no clone).
-    /// When building, the corpus is cloned for the builder; the original is
-    /// moved into from_topology for reconstruction.
     fn load_or_build<I: Topology>(
         &self,
         path: &Path,
@@ -48,8 +45,7 @@ impl BuildContext<'_> {
         if !self.force_recreate && path.exists() {
             load_index(path, corpus)
         } else {
-            let build_corpus = corpus.clone();
-            build_and_save_index(path, self.dataset_path, corpus, || create(build_corpus))
+            build_and_save_index(path, self.dataset_path, || create(corpus))
         }
     }
 
