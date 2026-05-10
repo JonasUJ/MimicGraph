@@ -113,6 +113,7 @@ impl<P: Point> IndexVis<P> for FilteredMimicGraph<P> {
 
         // Search for labels via graph
         vamana_options.labels = &search_labels;
+        vis.extend(results.iter().cloned());
         let search_results = self.inner.search_vis(query, k, &vamana_options, vis);
 
         // Merge scan and search results, skipping duplicates
