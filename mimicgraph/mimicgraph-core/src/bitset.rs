@@ -27,6 +27,8 @@ pub struct Bitset {
     /// Actual range of indices in the bitset
     /// [inclusive, exclusive)
     range: (usize, usize),
+    /// Number of set bits
+    len: usize,
 }
 
 impl Serialize for Bitset {
@@ -56,6 +58,7 @@ impl Default for Bitset {
             top: Block::Empty,
             bounds: (0, 0),
             range: (0, 0),
+            len: 0,
         }
     }
 }
@@ -94,7 +97,11 @@ impl Bitset {
             self.range.1 = index + 1;
         }
 
-        self.top.set(index, self.bounds.0, self.bounds.1)
+        let newly_set = self.top.set(index, self.bounds.0, self.bounds.1);
+        if newly_set {
+            self.len += 1;
+        }
+        newly_set
     }
 
     /// Alias for [`Bitset::set`]. Returns `true` if the bit was newly set.
@@ -102,13 +109,17 @@ impl Bitset {
         self.set(index)
     }
 
-    /// Clears the bit at the given index
-    pub fn clear(&mut self, index: usize) {
+    /// Clears the bit at the given index. Returns `true` if the bit was previously set.
+    pub fn clear(&mut self, index: usize) -> bool {
         if index < self.range.0 || index >= self.range.1 {
-            return;
+            return false;
         }
 
-        self.top.clear(index, self.bounds.0, self.bounds.1);
+        if !self.top.clear(index, self.bounds.0, self.bounds.1) {
+            return false;
+        }
+
+        self.len -= 1;
 
         if self.top.is_empty() {
             self.range = (0, 0);
@@ -122,6 +133,8 @@ impl Bitset {
 
             self.shrink();
         }
+
+        true
     }
 
     /// Returns the smallest set bit index, or `None` if empty.
@@ -144,12 +157,12 @@ impl Bitset {
 
     /// Returns true if the bitset is empty
     pub fn is_empty(&self) -> bool {
-        self.top.is_empty()
+        self.len == 0
     }
 
     /// Returns the number of bits set in the bitset
     pub fn count(&self) -> usize {
-        self.top.count()
+        self.len
     }
 
     /// Returns an iterator over the indices of all set bits.
@@ -488,31 +501,38 @@ impl Block {
     }
 
     /// Clears the bit at `index` within this block covering `[start, end)`.
-    /// Collapses empty blocks.
-    fn clear(&mut self, index: usize, start: usize, end: usize) {
+    /// Collapses empty blocks. Returns `true` if the bit was previously set.
+    fn clear(&mut self, index: usize, start: usize, end: usize) -> bool {
         match self {
-            Block::Empty => {}
+            Block::Empty => false,
             Block::Data(bits) => {
-                *bits &= !(1 << (index - start));
+                let bit = 1 << (index - start);
+                let was_set = *bits & bit != 0;
+                *bits &= !bit;
 
                 if *bits == 0 {
                     *self = Block::Empty;
                 }
+
+                was_set
             }
             Block::Level(mask, children) => {
                 let (child_coverage, child_idx, child_start) = Self::child_of(index, start, end);
 
                 if ((*mask >> child_idx) & 1) == 0 {
-                    return;
+                    return false;
                 }
 
-                children[child_idx].clear(index, child_start, child_start + child_coverage);
+                let was_set =
+                    children[child_idx].clear(index, child_start, child_start + child_coverage);
                 if children[child_idx].is_empty() {
                     *mask &= !(1 << child_idx);
                     if *mask == 0 {
                         *self = Block::Empty;
                     }
                 }
+
+                was_set
             }
         }
     }
@@ -619,7 +639,7 @@ mod tests {
         b.set(7);
         assert!(!b.is_empty());
 
-        b.clear(7);
+        assert!(b.clear(7));
         assert!(b.is_empty());
         assert_eq!(b.count(), 0);
         assert_eq!(b.min(), None);
@@ -657,8 +677,8 @@ mod tests {
         let mut b = Bitset::new();
 
         b.set(10);
-        b.clear(999);
-        b.clear(5);
+        assert!(!b.clear(999));
+        assert!(!b.clear(5));
 
         assert_eq!(b.count(), 1);
         assert!(b.is_set(10));
@@ -670,7 +690,8 @@ mod tests {
         b.extend([10, 50, 200]);
 
         assert_eq!(b.min(), Some(10));
-        b.clear(10);
+        assert!(b.clear(10));
+        assert!(!b.clear(10));
         assert_eq!(b.min(), Some(50));
         assert!(b.is_set(50));
         assert!(b.is_set(200));
@@ -683,7 +704,8 @@ mod tests {
         b.extend([10, 50, 200]);
 
         assert_eq!(b.max(), Some(200));
-        b.clear(200);
+        assert!(b.clear(200));
+        assert!(!b.clear(200));
         assert_eq!(b.max(), Some(50));
         assert!(b.is_set(10));
         assert!(b.is_set(50));
@@ -695,9 +717,9 @@ mod tests {
         let mut b = Bitset::new();
         b.extend([5, 100, 1000]);
 
-        b.clear(5);
+        assert!(b.clear(5));
         assert_eq!(b.min(), Some(100));
-        b.clear(1000);
+        assert!(b.clear(1000));
         assert_eq!(b.max(), Some(100));
         assert_eq!(b.count(), 1);
         assert!(b.is_set(100));
@@ -710,7 +732,7 @@ mod tests {
 
         let min_before = b.min();
         let max_before = b.max();
-        b.clear(50);
+        assert!(b.clear(50));
 
         assert_eq!(b.min(), min_before);
         assert_eq!(b.max(), max_before);
@@ -722,7 +744,7 @@ mod tests {
         let mut b = Bitset::new();
         b.extend([10, 50, 10_000]);
         let bounds_wide = b.bounds;
-        b.clear(10_000);
+        assert!(b.clear(10_000));
 
         // Bounds should have shrunk since all remaining bits fit in a smaller tree
         assert!(
