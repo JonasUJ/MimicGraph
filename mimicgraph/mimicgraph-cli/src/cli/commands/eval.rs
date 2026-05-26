@@ -66,14 +66,14 @@ pub struct EvalCommand {
     /// MimicGraph options (m,l,p,e,qk,qef,con,vis,q) or "tuned" to auto-tune
     #[arg(
         long,
-        default_value = "m=32,l=400,p=300,e=16,qk=0,qef=100,con=false,vis=true,q=10"
+        default_value = "m=32,l=400,p=300,e=32,qk=0,qef=100,con=false,vis=true,q=10"
     )]
     mimicgraph_options: String,
 
     /// Filtered MimicGraph options (m,l,p,e,qk,qef,con,vis,q,threshold) or "tuned" to auto-tune
     #[arg(
         long,
-        default_value = "m=32,l=400,p=300,e=16,qk=0,qef=100,con=false,vis=true,q=10,threshold=1000"
+        default_value = "m=32,l=400,p=300,e=32,qk=0,qef=100,con=false,vis=true,q=10,threshold=1000"
     )]
     filtered_mimicgraph_options: String,
 

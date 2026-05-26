@@ -35,10 +35,13 @@ impl Topology for MimicGraph<Row<f32>> {
 
     fn into_topology(self) -> (MimicGraphTopology, Vec<Row<f32>>) {
         let (nodes, adj_lists) = self.graph.consume();
-        (MimicGraphTopology {
-            entry: self.entry,
-            adj_lists,
-        }, nodes)
+        (
+            MimicGraphTopology {
+                entry: self.entry,
+                adj_lists,
+            },
+            nodes,
+        )
     }
 
     fn from_topology(compact: MimicGraphTopology, data: Vec<Row<f32>>) -> Self {
@@ -102,11 +105,14 @@ impl Topology for HNSW<Row<f32>> {
 
         let (nodes, base_adj_lists) = base.consume();
 
-        (HNSWTopology {
-            layer_adj_lists,
-            base_adj_lists,
-            ep,
-        }, nodes)
+        (
+            HNSWTopology {
+                layer_adj_lists,
+                base_adj_lists,
+                ep,
+            },
+            nodes,
+        )
     }
 
     fn from_topology(compact: HNSWTopology, data: Vec<Row<f32>>) -> Self {
@@ -140,11 +146,14 @@ impl Topology for FilteredVamana<Row<f32>> {
 
     fn into_topology(self) -> (FilteredVamanaTopology, Vec<Row<f32>>) {
         let (nodes, adj_lists) = self.graph.consume();
-        (FilteredVamanaTopology {
-            start_nodes: self.start_nodes,
-            adj_lists,
-            labels: self.labels,
-        }, nodes)
+        (
+            FilteredVamanaTopology {
+                start_nodes: self.start_nodes,
+                adj_lists,
+                labels: self.labels,
+            },
+            nodes,
+        )
     }
 
     fn from_topology(compact: FilteredVamanaTopology, data: Vec<Row<f32>>) -> Self {
@@ -171,10 +180,13 @@ impl Topology for FilteredMimicGraph<Row<f32>> {
     fn into_topology(self) -> (FilteredMimicGraphTopology, Vec<Row<f32>>) {
         let inverted_index = self.inverted_index;
         let (inner, nodes) = self.inner.into_topology();
-        (FilteredMimicGraphTopology {
-            inner,
-            inverted_index,
-        }, nodes)
+        (
+            FilteredMimicGraphTopology {
+                inner,
+                inverted_index,
+            },
+            nodes,
+        )
     }
 
     fn from_topology(compact: FilteredMimicGraphTopology, data: Vec<Row<f32>>) -> Self {

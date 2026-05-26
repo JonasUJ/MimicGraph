@@ -89,15 +89,16 @@ impl FilteredMode {
         match mode {
             DatasetMode::Unfiltered => Ok(FilteredMode::Unfiltered),
             DatasetMode::Filtered => {
-                let labels = require_labels(
-                    Self::read_labels(h5file, "labels", num_corpus),
-                    "labels",
-                )?;
+                let labels =
+                    require_labels(Self::read_labels(h5file, "labels", num_corpus), "labels")?;
                 let query_labels = require_labels(
                     Self::read_labels(h5file, "query_labels", num_queries),
                     "query_labels",
                 )?;
-                Ok(FilteredMode::Filtered { labels, query_labels })
+                Ok(FilteredMode::Filtered {
+                    labels,
+                    query_labels,
+                })
             }
             DatasetMode::Auto => {
                 // Probe whether the datasets exist before doing the expensive read
@@ -105,15 +106,16 @@ impl FilteredMode {
                 let has_query_labels = h5file.group("query_labels").is_ok();
 
                 if has_labels && has_query_labels {
-                    let labels = require_labels(
-                        Self::read_labels(h5file, "labels", num_corpus),
-                        "labels",
-                    )?;
+                    let labels =
+                        require_labels(Self::read_labels(h5file, "labels", num_corpus), "labels")?;
                     let query_labels = require_labels(
                         Self::read_labels(h5file, "query_labels", num_queries),
                         "query_labels",
                     )?;
-                    Ok(FilteredMode::Filtered { labels, query_labels })
+                    Ok(FilteredMode::Filtered {
+                        labels,
+                        query_labels,
+                    })
                 } else {
                     tracing::warn!(
                         "Falling back to unfiltered mode because labels/query_labels were not available"

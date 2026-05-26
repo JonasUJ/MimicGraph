@@ -5,7 +5,6 @@ use roargraph::RoarGraphOptions;
 use std::collections::HashMap;
 use std::path::Path;
 
-
 pub fn dataset_file_name(path: &Path) -> Result<&str> {
     path.file_name()
         .and_then(|name| name.to_str())
