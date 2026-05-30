@@ -537,15 +537,6 @@ impl Block {
         }
     }
 
-    /// Returns the number of bits set in this block.
-    fn count(&self) -> usize {
-        match self {
-            Block::Empty => 0,
-            Block::Data(bits) => bits.count_ones() as usize,
-            Block::Level(_, children) => children.iter().map(|c| c.count()).sum(),
-        }
-    }
-
     /// Returns the smallest set bit index in this block covering `[start, end)`.
     fn min_bit(&self, start: usize, end: usize) -> Option<usize> {
         match self {
